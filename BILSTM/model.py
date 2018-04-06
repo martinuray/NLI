@@ -1,9 +1,15 @@
 import random
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import numpy as np
 import tensorflow as tf
 from tensorflow.contrib import learn
 from BILSTM.common import *
+
+from tensorflow.python.client import device_lib
+LOCAL_DEVICES = device_lib.list_local_devices()
+#print("Viewable device : {}".format(LOCAL_DEVICES))
+
 
 def print_shape(name, tensor):
     print("{} : {}".format(name, tensor.shape))
@@ -14,9 +20,9 @@ class FAIRModel:
         print("Building Model")
 
         self.input_p = tf.placeholder(tf.int32, [None, max_sequence], name="input_p")
-        self.input_p_len = tf.placeholder(tf.int32, [None,], name="input_p_len")
+        self.input_p_len = tf.placeholder(tf.int64, [None,], name="input_p_len")
         self.input_h = tf.placeholder(tf.int32, [None, max_sequence], name="input_h")
-        self.input_h_len = tf.placeholder(tf.int32, [None,], name="input_h_len")
+        self.input_h_len = tf.placeholder(tf.int64, [None,], name="input_h_len")
         self.input_y = tf.placeholder(tf.int32, [None,], name="input_y")
         self.dropout_keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
         self.batch_size = batch_size
@@ -29,7 +35,10 @@ class FAIRModel:
         self.lstm_dim = lstm_dim
         self.W = None
         self.word_indice = word_indice
-        self.network()
+        with tf.device('/gpu:0'):
+            self.network()
+
+        tf.ConfigProto(allow_soft_placement=True, log_device_placement=True)
         self.sess = tf.Session()
 
 
@@ -38,9 +47,7 @@ class FAIRModel:
         hidden_states, cell_states = biLSTM(embedded, self.lstm_dim, s_len, name)
 
         fw, bw = hidden_states
-        print_shape("fw:", fw)
         all_enc = tf.concat([fw, bw], axis=2)
-        print_shape("all_enc:", all_enc)
 
         pooled = tf.nn.max_pool(
             tf.reshape(all_enc, [-1, self.max_seq, 2*self.lstm_dim, 1]),
@@ -54,13 +61,12 @@ class FAIRModel:
 
     def network(self):
         print("network..")
-        with tf.name_scope("embedding"), tf.device('/device:GPU:0'):
+        with tf.name_scope("embedding"):
             self.embedding = load_embedding(self.word_indice, self.embedding_size)
 
         p_encode = self.encode(self.input_p, self.input_p_len, "premise")
         h_encode = self.encode(self.input_h, self.input_h_len, "hypothesis")
 
-        # TODO output
         f_concat = tf.concat([p_encode, h_encode], axis=1)
         f_sub = p_encode - h_encode
         f_odot = tf.multiply(p_encode, h_encode)
@@ -82,7 +88,6 @@ class FAIRModel:
     def get_batches(self, data):
         # data is fully numpy array here
         step_size = int((len(data) + self.batch_size - 1) / self.batch_size)
-        # TODO reformat data to the size of batch
         new_data = []
         for step in range(step_size):
             p = []
@@ -105,10 +110,16 @@ class FAIRModel:
         return new_data
 
     def train(self, epochs, data):
+        print("Train")
         self.sess.run(tf.global_variables_initializer())
         batches = self.get_batches(data)
+        g_step= 0
         for i in range(epochs):
+            print("Epoch {}".format(i))
+            s_loss = 0
+            l_acc = []
             for batch in batches:
+                g_step += 1
                 p, p_len, h, h_len, y = batch
                 _, acc, loss = self.sess.run([self.train_op, self.acc, self.loss], feed_dict={
                     self.input_p: p,
@@ -118,4 +129,7 @@ class FAIRModel:
                     self.input_y: y,
                     self.dropout_keep_prob: 0.5,
                 })
-                print("loss : {}".format(loss))
+                print("step{} : {} acc : {}".format(g_step, loss, acc))
+                s_loss += loss
+                l_acc.append(acc)
+            print("Average loss : {} , acc : {}".format(s_loss, avg(l_acc)))

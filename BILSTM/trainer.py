@@ -46,7 +46,7 @@ def build_voca():
     return word2idx
 
 def load_voca():
-    return pickle.load(open("pickle\\word2idx", "rb"))
+    return load_pickle("word2idx")
 
 
 def get_model():
@@ -89,25 +89,26 @@ def transform_corpus(max_sequence = 400):
             'h_len':s2_len,
             'y':y})
 
-    pickle.dump(data, open("pickle\\np_corpus", "wb"))
+    save_pickle("np_corpus", data)
     return data
 
 
 def train():
     voca = load_voca()
-    model = FAIRModel(max_sequence=400, word_indice=voca, batch_size=10, num_classes=3, vocab_size=1000,
+    print(args.max_sequence)
+    model = FAIRModel(max_sequence=400, word_indice=voca, batch_size=40, num_classes=3, vocab_size=1000,
                       embedding_size=300, lstm_dim=1024)
-    data = pickle.load(open("pickle\\np_corpus", "rb"))
+    data = load_pickle("np_corpus")
     epochs = 10
     model.train(epochs, data)
 
 
 
 if __name__ == "__main__":
-    action = "transform train"
+    action = "train"
     if "build_voca" in action:
         word2idx = build_voca()
-        pickle.dump(word2idx, open("pickle\\word2idx", "wb"))
+        save_pickle("word2idx", word2idx)
 
     # reformat corpus
     if "transform" in action:

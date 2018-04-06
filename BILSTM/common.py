@@ -2,6 +2,20 @@ import numpy as np
 from parameter import *
 
 import tensorflow as tf
+import pickle
+
+def avg(l):
+    return sum(l)/len(l)
+
+
+def load_pickle(name):
+    path = os.path.join("pickle", name)
+    return pickle.load(open(path,"rb"))
+
+
+def save_pickle(name, obj):
+    path = os.path.join("pickle", name)
+    return pickle.dump(obj, open(path,"wb"))
 
 
 def length(sequence):
@@ -44,7 +58,6 @@ def load_embedding(word_indices, word_embedding_dimension, divident=1.0):
 
     # Explicitly assign embedding of <PAD> to be zeros.
     emb[0, :] = np.zeros((1, m), dtype="float32")
-    return emb
 
     with open(path, 'r', encoding='utf-8') as f:
         for i, line in enumerate(f):
@@ -73,7 +86,7 @@ def biLSTM(inputs, dim, seq_len, name):
         with tf.variable_scope('backward' + name):
             lstm_bwd = tf.contrib.rnn.LSTMCell(num_units=dim)
 
-        hidden_states, cell_states = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fwd, cell_bw=lstm_bwd, inputs=inputs, sequence_length=seq_len, dtype=tf.float32, scope=name)
-    print("hidden_states:", hidden_states)
+        hidden_states, cell_states = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fwd, cell_bw=lstm_bwd,
+                                                                     inputs=inputs, dtype=tf.float32, scope=name)
     return hidden_states, cell_states
 
