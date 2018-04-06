@@ -81,7 +81,7 @@ def transform_corpus(max_sequence = 400):
         s1, s1_len = convert(s1_tokenize)
         s2, s2_len = convert(s2_tokenize)
         label = datum["label"]
-        y = np.array([label])
+        y = label
         data.append({
             'p':s1,
             'p_len':s1_len,
@@ -98,7 +98,8 @@ def train():
     model = FAIRModel(max_sequence=400, word_indice=voca, batch_size=10, num_classes=3, vocab_size=1000,
                       embedding_size=300, lstm_dim=1024)
     data = pickle.load(open("pickle\\np_corpus", "rb"))
-    model.train(data)
+    epochs = 10
+    model.train(epochs, data)
 
 
 

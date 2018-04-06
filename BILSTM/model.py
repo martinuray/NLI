@@ -91,18 +91,21 @@ class FAIRModel:
             h_len = []
             y = []
             for i in range(self.batch_size):
-                idx = step_size * self.batch_size + i
-                if idx > len(data):
+                idx = step * self.batch_size + i
+                if idx >= len(data):
                     break
                 p.append(data[idx]['p'])
                 p_len.append(data[idx]['p_len'])
                 h.append(data[idx]['h'])
                 h_len.append(data[idx]['h_len'])
                 y.append(data[idx]['y'])
-            new_data.append((np.stack(p), np.stack(p_len), np.stack(h), np.stack(h_len), np.stack(y)))
+            if len(p) > 0:
+                new_data.append((np.stack(p), np.stack(p_len), np.stack(h), np.stack(h_len), np.stack(y)))
+        print("Total of {} batches".format(len(new_data)))
         return new_data
 
     def train(self, epochs, data):
+        self.sess.run(tf.global_variables_initializer())
         batches = self.get_batches(data)
         for i in range(epochs):
             for batch in batches:
