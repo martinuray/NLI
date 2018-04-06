@@ -58,7 +58,6 @@ def load_embedding(word_indices, word_embedding_dimension, divident=1.0):
 
     # Explicitly assign embedding of <PAD> to be zeros.
     emb[0, :] = np.zeros((1, m), dtype="float32")
-
     with open(path, 'r', encoding='utf-8') as f:
         for i, line in enumerate(f):
 

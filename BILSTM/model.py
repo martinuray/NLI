@@ -35,11 +35,13 @@ class FAIRModel:
         self.lstm_dim = lstm_dim
         self.W = None
         self.word_indice = word_indice
+        self.reg_constant = 0.1
         with tf.device('/gpu:0'):
             self.network()
 
-        tf.ConfigProto(allow_soft_placement=True, log_device_placement=True)
-        self.sess = tf.Session()
+
+        self.sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True,
+                                                     log_device_placement=True))
 
 
     def encode(self, s, s_len, name):
@@ -74,12 +76,25 @@ class FAIRModel:
         feature = tf.concat([f_concat, f_sub, f_odot], axis=1)
         print_shape("feature:", feature)
 
-        self.logits = tf.contrib.layers.fully_connected(feature, self.num_classes, activation_fn=tf.nn.relu)
+        l2_loss = 0
+        with tf.name_scope("output"):
+            W = tf.get_variable(
+                "W",
+                shape=[self.lstm_dim*8, self.num_classes],
+                initializer=tf.contrib.layers.xavier_initializer())
+            b = tf.Variable(tf.constant(0.1, shape=[self.num_classes]), name="b")
+            self.dense_W = W
+            self.dense_b = b
+            l2_loss += tf.nn.l2_loss(W)
+            l2_loss += tf.nn.l2_loss(b)
+            self.logits = tf.nn.xw_plus_b(feature, W, b, name="logits") # [batch, num_class]
+
         print_shape("self.logits:", self.logits)
-        self.loss = tf.reduce_mean(
+        pred_loss = tf.reduce_mean(
             tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.input_y, logits=self.logits))
         self.acc = tf.reduce_mean(
             tf.cast(tf.equal(tf.argmax(self.logits, axis=1),tf.cast(self.input_y, tf.int64)), tf.float32))
+        self.loss = pred_loss + self.reg_constant * l2_loss
 
         optimizer = tf.train.AdamOptimizer(1e-3)
         grads_and_vars = optimizer.compute_gradients(self.loss)
