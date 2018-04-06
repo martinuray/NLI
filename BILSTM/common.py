@@ -30,6 +30,7 @@ def glove_voca():
 
 
 def load_embedding(word_indices, word_embedding_dimension, divident=1.0):
+    print("loading embedding")
     path = path_dict["embedding_data_path"]
     """
     Load GloVe embeddings. Doing a random normal initialization for OOV words.
@@ -43,6 +44,7 @@ def load_embedding(word_indices, word_embedding_dimension, divident=1.0):
 
     # Explicitly assign embedding of <PAD> to be zeros.
     emb[0, :] = np.zeros((1, m), dtype="float32")
+    return emb
 
     with open(path, 'r', encoding='utf-8') as f:
         for i, line in enumerate(f):
@@ -56,6 +58,7 @@ def load_embedding(word_indices, word_embedding_dimension, divident=1.0):
                     continue
 
     return emb
+
 
 def biLSTM(inputs, dim, seq_len, name):
     """
@@ -71,6 +74,6 @@ def biLSTM(inputs, dim, seq_len, name):
             lstm_bwd = tf.contrib.rnn.LSTMCell(num_units=dim)
 
         hidden_states, cell_states = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fwd, cell_bw=lstm_bwd, inputs=inputs, sequence_length=seq_len, dtype=tf.float32, scope=name)
-
+    print("hidden_states:", hidden_states)
     return hidden_states, cell_states
 
