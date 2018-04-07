@@ -5,6 +5,7 @@ from parameter import *
 from collections import Counter
 import pickle
 from BILSTM.common import *
+tf.logging.set_verbosity(tf.logging.INFO)
 
 def tokenize(string):
     string = re.sub(r'\(|\)', '', string)

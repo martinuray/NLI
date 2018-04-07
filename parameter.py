@@ -3,13 +3,11 @@ import os
 parser = argparse.ArgumentParser()
 pa = parser.add_argument
 pa("--datapath", type=str, default="data")
-pa("--batch_size", type=int, default="30")
+pa("--batch_size", type=int, default="70")
 pa("--lstm_size", type=int, default="1024")
 pa("--max_sequence", type=int, default="400")
 
 args = parser.parse_args()
-
-print(args.datapath)
 
 path_dict = {
     "training_mnli": os.path.join(args.datapath, "multinli_0.9","multinli_0.9_train.jsonl"),

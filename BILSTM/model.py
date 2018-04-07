@@ -1,4 +1,5 @@
 import random
+import time
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import numpy as np
@@ -29,6 +30,7 @@ class FAIRModel:
         self.filters = []
 
         self.num_classes = num_classes
+        self.hidden_size = 200
         self.vocab_size = vocab_size
         self.embedding_size = embedding_size
         self.max_seq = max_sequence
@@ -36,13 +38,13 @@ class FAIRModel:
         self.W = None
         self.word_indice = word_indice
         self.reg_constant = 0.1
-        with tf.device('/gpu:0'):
-            self.network()
-
 
         self.sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True,
                                                      log_device_placement=True))
+        with tf.device('/gpu:0'):
+            self.network()
 
+        self.train_writer = tf.summary.FileWriter(os.path.join('summary', 'train'), self.sess.graph)
 
     def encode(self, s, s_len, name):
         embedded = tf.nn.embedding_lookup(self.embedding, s)
@@ -61,11 +63,23 @@ class FAIRModel:
         print_shape("pooled:", pooled)
         return tf.reshape(pooled, [-1, 2*self.lstm_dim])
 
+    def dense(self, input, input_size, output_size, name):
+        with tf.variable_scope(name):
+            W = tf.get_variable(
+                "W",
+                shape=[input_size, output_size],
+                initializer=tf.contrib.layers.xavier_initializer())
+            b = tf.Variable(tf.constant(0.1, shape=[output_size]), name="b")
+            self.l2_loss += tf.nn.l2_loss(W)
+            self.l2_loss += tf.nn.l2_loss(b)
+            output = tf.nn.xw_plus_b(input, W, b, name="logits")  # [batch, num_class]
+            return output
+
     def network(self):
         print("network..")
         with tf.name_scope("embedding"):
             self.embedding = load_embedding(self.word_indice, self.embedding_size)
-
+        print("self.embedding : {}".format(self.embedding))
         p_encode = self.encode(self.input_p, self.input_p_len, "premise")
         h_encode = self.encode(self.input_h, self.input_h_len, "hypothesis")
 
@@ -76,25 +90,23 @@ class FAIRModel:
         feature = tf.concat([f_concat, f_sub, f_odot], axis=1)
         print_shape("feature:", feature)
 
-        l2_loss = 0
-        with tf.name_scope("output"):
-            W = tf.get_variable(
-                "W",
-                shape=[self.lstm_dim*8, self.num_classes],
-                initializer=tf.contrib.layers.xavier_initializer())
-            b = tf.Variable(tf.constant(0.1, shape=[self.num_classes]), name="b")
-            self.dense_W = W
-            self.dense_b = b
-            l2_loss += tf.nn.l2_loss(W)
-            l2_loss += tf.nn.l2_loss(b)
-            self.logits = tf.nn.xw_plus_b(feature, W, b, name="logits") # [batch, num_class]
+        self.l2_loss = 0
+
+        hidden1 = self.dense(feature, self.lstm_dim * 8, self.hidden_size, "hidden")
+        self.logits = self.dense(hidden1, self.hidden_size, self.num_classes, "output")
+        tf.summary.scalar('l2loss', self.l2_loss)
 
         print_shape("self.logits:", self.logits)
         pred_loss = tf.reduce_mean(
             tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.input_y, logits=self.logits))
         self.acc = tf.reduce_mean(
             tf.cast(tf.equal(tf.argmax(self.logits, axis=1),tf.cast(self.input_y, tf.int64)), tf.float32))
-        self.loss = pred_loss + self.reg_constant * l2_loss
+        self.loss = pred_loss + self.reg_constant * self.l2_loss
+
+        tf.summary.histogram('logit_histogram', self.logits)
+        tf.summary.scalar('acc', self.acc)
+        tf.summary.scalar('loss', self.loss)
+        self.merged = tf.summary.merge_all()
 
         optimizer = tf.train.AdamOptimizer(1e-3)
         grads_and_vars = optimizer.compute_gradients(self.loss)
@@ -135,8 +147,9 @@ class FAIRModel:
             l_acc = []
             for batch in batches:
                 g_step += 1
+                start = time.time()
                 p, p_len, h, h_len, y = batch
-                _, acc, loss = self.sess.run([self.train_op, self.acc, self.loss], feed_dict={
+                _, acc, loss, summary = self.sess.run([self.train_op, self.acc, self.loss, self.merged], feed_dict={
                     self.input_p: p,
                     self.input_p_len: p_len,
                     self.input_h: h,
@@ -144,7 +157,9 @@ class FAIRModel:
                     self.input_y: y,
                     self.dropout_keep_prob: 0.5,
                 })
-                print("step{} : {} acc : {}".format(g_step, loss, acc))
+                elapsed = time.time() - start
+                print("step{} : {} acc : {} elapsed={}".format(g_step, loss, acc, elapsed))
                 s_loss += loss
                 l_acc.append(acc)
+                self.train_writer.add_summary(summary, g_step)
             print("Average loss : {} , acc : {}".format(s_loss, avg(l_acc)))

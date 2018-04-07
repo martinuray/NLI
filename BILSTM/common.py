@@ -58,6 +58,7 @@ def load_embedding(word_indices, word_embedding_dimension, divident=1.0):
 
     # Explicitly assign embedding of <PAD> to be zeros.
     emb[0, :] = np.zeros((1, m), dtype="float32")
+    count=0
     with open(path, 'r', encoding='utf-8') as f:
         for i, line in enumerate(f):
 
@@ -65,10 +66,13 @@ def load_embedding(word_indices, word_embedding_dimension, divident=1.0):
             if s[0] in word_indices:
                 try:
                     emb[word_indices[s[0]], :] = np.asarray(s[1:])
+                    count += 1
                 except ValueError:
                     print(s[0])
                     continue
 
+    print("{} of {} initialized".format(count, len(word_indices)))
+    save_pickle("wemb", emb)
     return emb
 
 
