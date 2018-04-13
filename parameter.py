@@ -3,7 +3,7 @@ import os
 parser = argparse.ArgumentParser()
 pa = parser.add_argument
 pa("--datapath", type=str, default="data")
-pa("--batch_size", type=int, default="70")
+pa("--batch_size", type=int, default="30    ")
 pa("--lstm_size", type=int, default="1024")
 pa("--max_sequence", type=int, default="400")
 

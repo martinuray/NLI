@@ -50,15 +50,9 @@ def load_voca():
     return load_pickle("word2idx")
 
 
-def get_model():
-    indice = load_voca()
-    model = FAIRModel(max_sequence=100, word_indice=indice, batch_size=10, num_classes=3, vocab_size=1000,
-                      embedding_size=300, lstm_dim=1024)
-
-
-def transform_corpus(max_sequence = 400):
+def transform_corpus(path, save_path, max_sequence = 400):
     voca = load_voca()
-    mnli_train = load_nli_data(path_dict["training_mnli"])
+    mnli_train = load_nli_data(path)
     def convert(tokens):
         OOV = 0
         l = []
@@ -90,14 +84,13 @@ def transform_corpus(max_sequence = 400):
             'h_len':s2_len,
             'y':y})
 
-    save_pickle("np_corpus", data)
+    save_pickle(save_path, data)
     return data
 
 
 def train():
     voca = load_voca()
-    print(args.max_sequence)
-    model = FAIRModel(max_sequence=400, word_indice=voca, batch_size=40, num_classes=3, vocab_size=1000,
+    model = FAIRModel(max_sequence=400, word_indice=voca, batch_size=args.batch_size, num_classes=3, vocab_size=1000,
                       embedding_size=300, lstm_dim=1024)
     data = load_pickle("np_corpus")
     epochs = 10
@@ -113,7 +106,7 @@ if __name__ == "__main__":
 
     # reformat corpus
     if "transform" in action:
-        transform_corpus()
+        transform_corpus(path_dict["training_mnli"], "np_corpus")
 
     if "train" in action:
         train()

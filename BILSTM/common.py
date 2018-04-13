@@ -93,3 +93,34 @@ def biLSTM(inputs, dim, seq_len, name):
                                                                      inputs=inputs, dtype=tf.float32, scope=name)
     return hidden_states, cell_states
 
+def weight_bias(W_shape, b_shape, bias_init=0.1):
+    W = tf.Variable(tf.truncated_normal(W_shape, stddev=0.1), name='weight')
+    b = tf.Variable(tf.constant(bias_init, shape=b_shape), name='bias')
+    return W, b
+
+def highway_layer(x, size, activation, name, carry_bias=-1.0):
+    with tf.name_scope(name):
+        W, b = weight_bias([size, size], [size])
+
+        with tf.name_scope('transform_gate'):
+            W_T, b_T = weight_bias([size, size], [size], bias_init=carry_bias)
+
+        H = activation(tf.matmul(x, W) + b, name='activation')
+        T = tf.sigmoid(tf.matmul(x, W_T) + b_T, name='transform_gate')
+        C = tf.sub(1.0, T, name="carry_gate")
+
+        y = tf.add(tf.mul(H, T), tf.mul(x, C), name='y') # y = (H * T) + (x * C)
+        return y
+
+def attention(x, name):
+    batch, max_seq, dim = x.shape
+    with tf.name_scope(name):
+        W, b = weight_bias([dim, dim], [dim])
+        E = tf.nn.relu(tf.matmul(x, W) + b) # [batch, seq, dim]
+        E2 = tf.matmul(E, E, transpose_b=True) # [ batch, seq, seq]
+        a_raw = tf.matmul(E2, x) # [ batch, seq, dim]
+        a_z = tf.reshape(tf.tile(tf.reduce_sum(E2, axis=2), dim), [batch, max_seq, dim]) #[batch, seq]
+        a = tf.div(a_raw, a_z) #[batch, seq, dim]
+        return a
+
+
