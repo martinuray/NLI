@@ -50,11 +50,13 @@ class FAIRModel:
         self.word_indice = word_indice
         self.reg_constant = 1e-6
 
+        self.train_op = None
+
         self.sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True,
                                                      log_device_placement=False))
 
         with tf.device('/gpu:0'):
-            self.bilstm_network()
+            self.network()
             self.run_metadata = tf.RunMetadata()
             path = get_summary_path()
             self.train_writer = tf.summary.FileWriter(path, self.sess.graph)
@@ -81,7 +83,7 @@ class FAIRModel:
             #self.embedding = load_embedding(self.word_indice, self.embedding_size)
             self.embedding = tf.Variable(load_pickle("wemb"))
 
-        def encode(self, s, s_len, embedding, name):
+        def encode(s, s_len, embedding, name):
             embedded = tf.nn.embedding_lookup(embedding, s)
             tf.summary.histogram(name, embedded[0, :])
             hidden_states, cell_states = biLSTM(embedded, self.lstm_dim, s_len, name)
@@ -100,8 +102,8 @@ class FAIRModel:
             return tf.reshape(pooled, [-1, 2 * self.lstm_dim])
 
         #print("self.embedding : {}".format(self.embedding))
-        p_encode = encode(self.input_p, self.input_p_len, "premise")
-        h_encode = encode(self.input_h, self.input_h_len, "hypothesis")
+        p_encode = encode(self.input_p, self.input_p_len, self.embedding, "premise")
+        h_encode = encode(self.input_h, self.input_h_len, self.embedding, "hypothesis")
 
         f_concat = tf.concat([p_encode, h_encode], axis=1)
         f_sub = p_encode - h_encode
@@ -110,7 +112,7 @@ class FAIRModel:
         feature = tf.concat([f_concat, f_sub, f_odot], axis=1)
         print_shape("feature:", feature)
         tf.summary.histogram("feature", feature)
-        l2_loss = 0
+        self.l2_loss = 0
 
         feature_drop = tf.nn.dropout(feature, self.dropout_keep_prob)
         hidden1 = self.dense(feature_drop, self.lstm_dim * 8, self.hidden_size, "hidden1")
@@ -118,7 +120,7 @@ class FAIRModel:
         hidden2 = self.dense(self.hidden1_drop, self.hidden_size, self.hidden_size, "hidden2")
         self.hidden2_drop = tf.nn.dropout(hidden2, self.dropout_keep_prob)
         logits = self.dense(self.hidden2_drop, self.hidden_size, self.num_classes, "output")
-        return logits, l2_loss
+        return logits
 
     def cafe_network(self):
         print("CAFE network..")
@@ -150,15 +152,15 @@ class FAIRModel:
 
 
     def network(self):
-        logits, l2_loss = self.bilstm_network()
+        logits = self.bilstm_network()
         self.logits = logits
-        tf.summary.scalar('l2loss', self.reg_constant * l2_loss)
+        tf.summary.scalar('l2loss', self.reg_constant * self.l2_loss)
         print_shape("self.logits:", self.logits)
         pred_loss = tf.reduce_mean(
             tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.input_y, logits=self.logits))
         self.acc = tf.reduce_mean(
             tf.cast(tf.equal(tf.argmax(self.logits, axis=1),tf.cast(self.input_y, tf.int64)), tf.float32))
-        self.loss = pred_loss + self.reg_constant * l2_loss
+        self.loss = pred_loss + self.reg_constant * self.l2_loss
 
         tf.summary.histogram('logit_histogram', self.logits)
         tf.summary.scalar('acc', self.acc)
@@ -168,7 +170,7 @@ class FAIRModel:
         self.global_step = tf.Variable(0, name='global_step', trainable=False)
         optimizer = tf.train.AdamOptimizer(1e-3)
         grads_and_vars = optimizer.compute_gradients(self.loss)
-        self.train_op = optimizer.apply_gradients(grads_and_vars)
+        self.train_op = optimizer.apply_gradients(grads_and_vars, global_step=self.global_step)
 
         for variable in tf.trainable_variables():
             # shape is an array of tf.Dimension
@@ -222,12 +224,16 @@ class FAIRModel:
                 }, run_metadata=self.run_metadata)
 
                 elapsed = time.time() - start
-                print("step{} : {} acc : {} elapsed={}".format(g_step, loss, acc, elapsed))
+                if g_step % 100 == 1:
+                    print("step{} : {} acc : {} elapsed={}".format(g_step, loss, acc, elapsed))
                 s_loss += loss
                 l_acc.append(acc)
                 self.train_writer.add_summary(summary, g_step)
                 self.train_writer.add_run_metadata(self.run_metadata, "meta_{}".format(g_step))
-            print("Average loss : {} , acc : {}".format(s_loss, avg(l_acc)))
+
             current_step = tf.train.global_step(self.sess, self.global_step)
-            path = self.saver.save(self.sess, os.paht.abspath("checkpoint"), global_step=current_step)
+            path = self.saver.save(self.sess, os.path.join(os.path.abspath("checkpoint"), "model"),
+                                   global_step=current_step)
             print("Checkpoint saved at {}".format(path))
+            print("Average loss : {} , acc : {}".format(s_loss, avg(l_acc)))
+
