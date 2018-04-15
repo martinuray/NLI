@@ -1,10 +1,10 @@
 
-from BILSTM.model import FAIRModel
-from BILSTM.data_manager import *
-from parameter import *
 from collections import Counter
-import pickle
+
 from BILSTM.common import *
+from BILSTM.data_manager import *
+from BILSTM.model import FAIRModel
+
 tf.logging.set_verbosity(tf.logging.INFO)
 
 def tokenize(string):
@@ -92,9 +92,10 @@ def train():
     voca = load_voca()
     model = FAIRModel(max_sequence=400, word_indice=voca, batch_size=args.batch_size, num_classes=3, vocab_size=1000,
                       embedding_size=300, lstm_dim=1024)
-    data = load_pickle("np_corpus")
+    data = load_pickle("train_corpus.pickle")
+    validate = load_pickle("dev_corpus")
     epochs = 10
-    model.train(epochs, data)
+    model.train(epochs, data, validate)
 
 
 
@@ -106,7 +107,7 @@ if __name__ == "__main__":
 
     # reformat corpus
     if "transform" in action:
-        transform_corpus(path_dict["training_mnli"], "np_corpus")
+        transform_corpus(path_dict["dev_matched"], "dev_corpus")
 
     if "train" in action:
         train()

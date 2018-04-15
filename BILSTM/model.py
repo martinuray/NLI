@@ -1,10 +1,7 @@
-import random
 import time
-import os
+import time
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-import numpy as np
-import tensorflow as tf
-from tensorflow.contrib import learn
 from BILSTM.common import *
 
 from tensorflow.python.client import device_lib
@@ -15,10 +12,10 @@ LOCAL_DEVICES = device_lib.list_local_devices()
 def print_shape(name, tensor):
     print("{} : {}".format(name, tensor.shape))
 
-def get_summary_path():
+def get_summary_path(name):
     i = 0
     def gen_path():
-        return os.path.join('summary', 'train{}'.format(i))
+        return os.path.join('summary', '{}{}'.format(name, i))
 
     while os.path.exists(gen_path()):
         i += 1
@@ -48,7 +45,7 @@ class FAIRModel:
         self.lstm_dim = lstm_dim
         self.W = None
         self.word_indice = word_indice
-        self.reg_constant = 1e-6
+        self.reg_constant = 1e-5
 
         self.train_op = None
 
@@ -58,11 +55,12 @@ class FAIRModel:
         with tf.device('/gpu:0'):
             self.network()
             self.run_metadata = tf.RunMetadata()
-            path = get_summary_path()
+            path = get_summary_path("train")
             self.train_writer = tf.summary.FileWriter(path, self.sess.graph)
             self.train_writer.add_run_metadata(self.run_metadata, "train")
             print("Summary at {}".format(path))
-            self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=2)
+            self.test_writer = tf.summary.FileWriter(get_summary_path("test"), self.sess.graph)
+            self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=10)
 
 
     def dense(self, input, input_size, output_size, name):
@@ -177,9 +175,9 @@ class FAIRModel:
             print(variable)
             shape = variable.get_shape()
 
-    def get_batches(self, data):
+    def get_batches(self, data, batch_size):
         # data is fully numpy array here
-        step_size = int((len(data) + self.batch_size - 1) / self.batch_size)
+        step_size = int((len(data) + batch_size - 1) / batch_size)
         new_data = []
         for step in range(step_size):
             p = []
@@ -187,8 +185,8 @@ class FAIRModel:
             h = []
             h_len = []
             y = []
-            for i in range(self.batch_size):
-                idx = step * self.batch_size + i
+            for i in range(batch_size):
+                idx = step * batch_size + i
                 if idx >= len(data):
                     break
                 p.append(data[idx]['p'])
@@ -201,10 +199,32 @@ class FAIRModel:
         print("Total of {} batches".format(len(new_data)))
         return new_data
 
-    def train(self, epochs, data):
+    def check_dev(self, batches):
+        acc_sum = []
+        loss_sum = []
+        for batch in batches:
+            p, p_len, h, h_len, y = batch
+            acc, loss, summary, step = self.sess.run([self.acc, self.loss, self.merged, self.global_step], feed_dict={
+                self.input_p: p,
+                self.input_p_len: p_len,
+                self.input_h: h,
+                self.input_h_len: h_len,
+                self.input_y: y,
+                self.dropout_keep_prob: 1.0,
+            }, run_metadata=self.run_metadata)
+            self.test_writer.add_summary(summary, global_step=step)
+            acc_sum.append(acc)
+            loss_sum.append(loss)
+
+        print("Dev acc={} loss={} ".format(avg(acc_sum), avg(loss_sum)))
+
+
+    def train(self, epochs, data, valid_data):
         print("Train")
         self.sess.run(tf.global_variables_initializer())
-        batches = self.get_batches(data)
+        batches = self.get_batches(data, self.batch_size)
+        dev_batches = self.get_batches(valid_data, 200)
+        check_dev_every = 2000
         g_step= 0
         for i in range(epochs):
             print("Epoch {}".format(i))
@@ -226,6 +246,8 @@ class FAIRModel:
                 elapsed = time.time() - start
                 if g_step % 100 == 1:
                     print("step{} : {} acc : {} elapsed={}".format(g_step, loss, acc, elapsed))
+                if g_step % check_dev_every == 0 :
+                    self.check_dev(dev_batches)
                 s_loss += loss
                 l_acc.append(acc)
                 self.train_writer.add_summary(summary, g_step)
