@@ -1,4 +1,4 @@
-from BILSTM.model import FAIRModel
+from models.FAIRmodel import FAIRModel
 
 
 indice = {

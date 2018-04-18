@@ -1,8 +1,6 @@
-import re
-import random
 import json
-import collections
-import numpy as np
+import random
+import re
 
 LABEL_MAP = {
     "entailment": 0,
@@ -10,6 +8,13 @@ LABEL_MAP = {
     "contradiction": 2,
     "hidden": -1
 }
+
+def label2sym(label):
+    D = {0:"E",
+    1:"N",
+    2:"C"}
+    return D[label]
+
 
 def load_nli_data(path, snli=False, shuffle=True):
     """

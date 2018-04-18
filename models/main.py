@@ -1,9 +1,10 @@
 
 from collections import Counter
 
-from BILSTM.common import *
-from BILSTM.data_manager import *
-from BILSTM.model import FAIRModel
+from models.FAIRmodel import FAIRModel
+from models.common import *
+from models.data_manager import *
+from models.manager import *
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -88,7 +89,7 @@ def transform_corpus(path, save_path, max_sequence = 400):
     return data
 
 
-def train():
+def train_fair():
     voca = load_voca()
     model = FAIRModel(max_sequence=400, word_indice=voca, batch_size=args.batch_size, num_classes=3, vocab_size=1000,
                       embedding_size=300, lstm_dim=1024)
@@ -98,9 +99,37 @@ def train():
     model.train(epochs, data, validate)
 
 
+def train_cafe():
+    voca = load_voca()
+    model = Manager(max_sequence=100, word_indice=voca, batch_size=args.batch_size,
+                    num_classes=3, vocab_size=1000,
+                      embedding_size=300, lstm_dim=1024)
+    data = load_pickle("train_corpus.pickle")
+    validate = load_pickle("dev_corpus")
+    epochs = 10
+    model.train(epochs, data, validate)
+
+
+
+def sa_run():
+    voca = load_voca()
+    model = FAIRModel(max_sequence=400, word_indice=voca, batch_size=args.batch_size, num_classes=3, vocab_size=1000,
+                      embedding_size=300, lstm_dim=1024)
+    model.load("model-13091")
+    validate = load_pickle("dev_corpus")
+    model.sa_analysis(validate[:100], reverse_index(voca))
+
+def view_weight():
+    voca = load_voca()
+    model = FAIRModel(max_sequence=400, word_indice=voca, batch_size=args.batch_size, num_classes=3, vocab_size=1000,
+                      embedding_size=300, lstm_dim=1024)
+    model.load("model-13091")
+    validate = load_pickle("dev_corpus")
+    model.view_weights(validate)
+
 
 if __name__ == "__main__":
-    action = "train"
+    action = "train_cafe"
     if "build_voca" in action:
         word2idx = build_voca()
         save_pickle("word2idx", word2idx)
@@ -109,5 +138,14 @@ if __name__ == "__main__":
     if "transform" in action:
         transform_corpus(path_dict["dev_matched"], "dev_corpus")
 
-    if "train" in action:
-        train()
+    if "train_fair" in action:
+        train_fair()
+
+    if "train_cafe" in action:
+        train_cafe()
+
+    if "sa_run" in action:
+        sa_run()
+
+    if "view_weight" in action:
+        view_weight()

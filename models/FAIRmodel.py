@@ -1,16 +1,13 @@
-import time
+import os
 import time
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-from BILSTM.common import *
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+from models.common import *
 
 from tensorflow.python.client import device_lib
 LOCAL_DEVICES = device_lib.list_local_devices()
 #print("Viewable device : {}".format(LOCAL_DEVICES))
 
-
-def print_shape(name, tensor):
-    print("{} : {}".format(name, tensor.shape))
 
 def get_summary_path(name):
     i = 0
@@ -81,10 +78,8 @@ class FAIRModel:
             #self.embedding = load_embedding(self.word_indice, self.embedding_size)
             self.embedding = tf.Variable(load_pickle("wemb"))
 
-        def encode(s, s_len, embedding, name):
-            embedded = tf.nn.embedding_lookup(embedding, s)
-            tf.summary.histogram(name, embedded[0, :])
-            hidden_states, cell_states = biLSTM(embedded, self.lstm_dim, s_len, name)
+        def encode(sent, name):
+            hidden_states, cell_states = biLSTM(sent, self.lstm_dim, name)
 
             fw, bw = hidden_states
             all_enc = tf.concat([fw, bw], axis=2)
@@ -95,13 +90,14 @@ class FAIRModel:
                 strides=[1, 1, 1, 1],
                 padding='VALID',
             )
-
             print_shape("pooled:", pooled)
             return tf.reshape(pooled, [-1, 2 * self.lstm_dim])
 
-        #print("self.embedding : {}".format(self.embedding))
-        p_encode = encode(self.input_p, self.input_p_len, self.embedding, "premise")
-        h_encode = encode(self.input_h, self.input_h_len, self.embedding, "hypothesis")
+        self.premise = tf.nn.embedding_lookup(self.embedding, self.input_p)
+        self.hypothesis = tf.nn.embedding_lookup(self.embedding, self.input_h)
+
+        p_encode = encode(self.premise, "premise")
+        h_encode = encode(self.hypothesis, "hypothesis")
 
         f_concat = tf.concat([p_encode, h_encode], axis=1)
         f_sub = p_encode - h_encode
@@ -117,36 +113,27 @@ class FAIRModel:
         self.hidden1_drop = tf.nn.dropout(hidden1, self.dropout_keep_prob)
         hidden2 = self.dense(self.hidden1_drop, self.hidden_size, self.hidden_size, "hidden2")
         self.hidden2_drop = tf.nn.dropout(hidden2, self.dropout_keep_prob)
+
         logits = self.dense(self.hidden2_drop, self.hidden_size, self.num_classes, "output")
         return logits
 
-    def cafe_network(self):
-        print("CAFE network..")
-        self.highway_size = 300
-        with tf.name_scope("embedding"):
-            #self.embedding = load_embedding(self.word_indice, self.embedding_size)
-            self.embedding = tf.Variable(load_pickle("wemb"), trainable=False)
 
-        def encode(sent, name):
-            embedded_raw = tf.nn.embedding_lookup(self.embedding, sent)  # [batch, max_seq, dim]
 
-            embedded = tf.reshape(embedded_raw, [-1, self.embedding_size])
-            h = highway_layer(embedded, self.highway_size, tf.nn.relu, "{}/high1".format(name))
-            h2 = highway_layer(h, self.highway_size, tf.nn.relu, "{}/high2".format(name))
-            h_out = tf.reshape(h2, [self.batch_size, self.max_seq, self.embedding_size])
-            att = attention(h_out, name)
-
-            return h_out, att
-
-        p_encode = encode(self.input_p, "premise")
-        h_encode = encode(self.input_h, "hypothesis")
-
-        f_concat = tf.concat([p_encode, h_encode], axis=1)
-        f_sub = p_encode - h_encode
-        f_odot = tf.multiply(p_encode, h_encode)
+    def get_sa(self):
+        gradient = []
+        for label in range(self.num_classes):
+            g = tf.gradients(self.logits[:,label], [self.premise, self.hypothesis]) # [batch, max_seq, word]
+            g_sum = tf.reduce_sum(tf.square(g), axis=3)
+            print(g_sum)
+            gradient.append(g_sum)
+        return gradient
 
 
 
+    def get_train_op(self):
+        optimizer = tf.train.AdamOptimizer(1e-3)
+        grads_and_vars = optimizer.compute_gradients(self.loss)
+        return optimizer.apply_gradients(grads_and_vars, global_step=self.global_step)
 
 
     def network(self):
@@ -165,10 +152,10 @@ class FAIRModel:
         tf.summary.scalar('loss', self.loss)
         self.merged = tf.summary.merge_all()
 
+        self.SA = self.get_sa()
+
         self.global_step = tf.Variable(0, name='global_step', trainable=False)
-        optimizer = tf.train.AdamOptimizer(1e-3)
-        grads_and_vars = optimizer.compute_gradients(self.loss)
-        self.train_op = optimizer.apply_gradients(grads_and_vars, global_step=self.global_step)
+        self.train_op = self.get_train_op()
 
         for variable in tf.trainable_variables():
             # shape is an array of tf.Dimension
@@ -218,6 +205,57 @@ class FAIRModel:
 
         print("Dev acc={} loss={} ".format(avg(acc_sum), avg(loss_sum)))
 
+    def sa_analysis(self, data, idx2word):
+        batches = self.get_batches(data, 50)
+        D = {0: "E",
+             1: "N",
+             2: "C"}
+
+        def word(index):
+            if index in idx2word:
+                return idx2word[index]
+            else:
+                return "OOV"
+        for batch in batches:
+            p, p_len, h, h_len, y = batch
+            acc, logits, sa = self.sess.run([self.acc, self.logits, self.SA], feed_dict={
+                self.input_p: p,
+                self.input_p_len: p_len,
+                self.input_h: h,
+                self.input_h_len: h_len,
+                self.input_y: y,
+                self.dropout_keep_prob: 1.0,
+            })
+            l, = y.shape
+            pred = np.argmax(logits, axis=1)
+            for i in range(l):
+                true_label = D[y[i]]
+                pred_label = D[pred[i]]
+                print("--- {}({}) --- ".format(pred_label, true_label))
+                for title, sent, s_len, s_idx in [("prem", p, p_len ,0), ("hypo", h, h_len ,1)]:
+                    print("{}:".format(title), end="\t")
+                    for j in range(s_len[i]+10):
+                        print("{}".format(word(sent[i, j])), end=" ")
+                    print("")
+                    for label in range(self.num_classes):
+                        total_d = np.sum(sa[label][s_idx, i, :])
+                        print("{0}{1:.1f} : ".format(D[label], total_d), end="\t")
+                        for j in range(s_len[i]+10):
+                            char_len = len(word(sent[i,j]))
+                            buffer = " " * (char_len-4)
+                            print("{0:.2f}{1}".format(sa[label][s_idx, i, j], buffer), end=" ")
+                        print("")
+
+    def load(self, id):
+        self.saver.restore(self.sess, self.load_path(id))
+
+
+
+    def save_path(self):
+        return os.path.join(os.path.abspath("checkpoint"), "model")
+
+    def load_path(self, id):
+        return os.path.join(os.path.abspath("checkpoint"), id)
 
     def train(self, epochs, data, valid_data):
         print("Train")
@@ -243,9 +281,9 @@ class FAIRModel:
                     self.dropout_keep_prob: 0.9,
                 }, run_metadata=self.run_metadata)
 
-                elapsed = time.time() - start
+
                 if g_step % 100 == 1:
-                    print("step{} : {} acc : {} elapsed={}".format(g_step, loss, acc, elapsed))
+                    print("step{} : {} acc : {} time={}".format(g_step, loss, acc, time.time()))
                 if g_step % check_dev_every == 0 :
                     self.check_dev(dev_batches)
                 s_loss += loss
@@ -254,8 +292,29 @@ class FAIRModel:
                 self.train_writer.add_run_metadata(self.run_metadata, "meta_{}".format(g_step))
 
             current_step = tf.train.global_step(self.sess, self.global_step)
-            path = self.saver.save(self.sess, os.path.join(os.path.abspath("checkpoint"), "model"),
-                                   global_step=current_step)
+            path = self.saver.save(self.sess, self.save_path(), global_step=current_step)
             print("Checkpoint saved at {}".format(path))
             print("Average loss : {} , acc : {}".format(s_loss, avg(l_acc)))
+
+    def view_weights(self, data):
+        batches = self.get_batches(data, 50)
+        D = {0: "E",
+             1: "N",
+             2: "C"}
+        o_w = tf.get_default_graph().get_tensor_by_name("output/W:0")
+        p, p_len, h, h_len, y = batches[0]
+        out_o_w, = self.sess.run([o_w], feed_dict={
+            self.input_p: p,
+            self.input_p_len: p_len,
+            self.input_h: h,
+            self.input_h_len: h_len,
+            self.input_y: y,
+            self.dropout_keep_prob: 1.0,
+        })
+
+        for i in range(200):
+            ce = out_o_w[i,2] - out_o_w[i,0]
+            en = out_o_w[i,0] - out_o_w[i,1]
+            print("{0:.2f} {1:.2f}".format(ce, en))
+
 
