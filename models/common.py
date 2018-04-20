@@ -165,13 +165,10 @@ def seq_xw_plus_b(x, W, b):
     print(x)
     x_flat = tf.reshape(x, shape=[-1, dim])
     z = tf.nn.xw_plus_b(x_flat, W, b)
-    print_shape("input_shape[:2]", input_shape[:2])
-    print_shape("tf.shape(W)[1:]", tf.shape(W)[1:])
     out_shape = tf.concat([input_shape[:2],tf.shape(W)[1:]], axis=0)
-    print_shape("out_shape", out_shape)
     out = tf.reshape(z, shape=out_shape)
-    print_shape("out", out)
     return out
+
 
 def attention(x, name):
     x = tf.cast(x, dtype=tf.float32)
@@ -179,15 +176,13 @@ def attention(x, name):
     print(dim)
     with tf.variable_scope(name):
         W, b = weight_bias([dim, dim], [dim])
-        print_shape("x", x)
         E = tf.nn.relu(seq_xw_plus_b(x, W, b)) # [batch, seq, dim]
-        print_shape("E", E)
         E2 = tf.matmul(E, E, transpose_b=True) # [ batch, seq, seq]
-        print_shape("E2", E2)
         a_raw = tf.matmul(E2, x) # [ batch, seq, dim]
         a_z = tf.reshape(tf.tile(tf.reduce_sum(E2, axis=2), [1,dim]), tf.shape(x)) #[batch, seq]
         a = tf.div(a_raw, a_z) #[batch, seq, dim]
         return a
+
 
 def interaction_feature(a,b, axis):
     f_concat = tf.concat([a, b], axis=axis)
@@ -216,8 +211,6 @@ def cartesian(v1, v2):
     v1_flat = tf.reshape(v1_e, [-1, d1, d2])
     v2_e = tf.tile(v2, [1,d1]) #
     v2_flat = tf.reshape(v2_e, [-1, d2, d1])
-    print_shape("v1_flat", v1_flat)
-    print_shape("v2_flat", v2_flat)
     return tf.matmul(v1_flat, v2_flat) # [batch*seq, d1, d1]
 
 
@@ -232,37 +225,15 @@ def factorization_machine(input, n_item, input_size, l2_loss, name):
             regularizer=tf.contrib.layers.l2_regularizer(scale=0.1),
             shape=[input_size, hidden_dim],
             initializer=tf.contrib.layers.xavier_initializer())
-        v2 = tf.matmul(v, v, transpose_b=True) #[input_size, input_size)
-        if False:
-            x2 = cartesian(input, input) # [batch*seq, input_size , input_size]
-            P_list = []
-            pp = tf.nn.conv2d(input=tf.reshape(x2, [-1, input_size, input_size, 1]),
-                         filter=tf.reshape(v2, [input_size,input_size,1,1]),
-                         strides=[1,1,1,1],
-                         padding="VALID"
-                         )
-            P = tf.reshape(pp, [-1])
         P1 = tf.pow(tf.matmul(input, v), 2)
         P2 = tf.matmul(tf.pow(input, 2), tf.pow(v, 2))
         P = tf.multiply(0.5,
             tf.reduce_sum(P1-P2,1))
-        print_shape("L", L)
-        print_shape("P", P)
         return L + P
-"""
-        P = tf.zeros(tf.shape(input)[:1])
-        def t(arr):
-            return tf.matrix_transpose(arr)
-        for d in range(input_size):
-            h1 = t(tf.multiply(t(input), input[:,d])) #[-, input_size
-            h2 = tf.multiply(h1, v2[d,:])
-            P = P + tf.reduce_sum(h2, axis=1)
-            # TODO is it correct?
-"""
 
 
 
-def LSTM_pool(input, max_seq, input_len, dim, name):
+def LSTM_pool(input, max_seq, input_len, dim, dropout_keep_prob, name):
     with tf.variable_scope(name):
         lstm_cell = tf.contrib.rnn.LSTMBlockFusedCell(num_units=dim)
 
@@ -276,12 +247,13 @@ def LSTM_pool(input, max_seq, input_len, dim, name):
     hidden_states, cell_states = lstm_cell(input_crop, dtype=tf.float32, scope=name)
     # [batch, batch_max_len, dim]
     h_shape = tf.shape(hidden_states)
+    hidden_states_drop = tf.nn.dropout(hidden_states, dropout_keep_prob)
     mid = tf.constant(max_seq, shape=[1]) - h_shape[1]
     print(h_shape[0:1])
     print(mid)
     pad_size = tf.concat([h_shape[0:1], mid, h_shape[2:]], axis=0)
     print(pad_size)
-    hidden_states = tf.concat([hidden_states, tf.zeros(pad_size)], axis=1)
+    hidden_states = tf.concat([hidden_states_drop, tf.zeros(pad_size)], axis=1)
 
     max_pooled = tf.nn.max_pool(
         tf.reshape(hidden_states, [-1, max_seq, dim, 1]),

@@ -1,12 +1,12 @@
-import os
 import time
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+from tensorflow.python.client import device_lib
 
 from models.CAFE import *
-from tensorflow.python.client import device_lib
+
 LOCAL_DEVICES = device_lib.list_local_devices()
 from tensorflow.python.client import timeline
+from deepexplain.tensorflow import DeepExplain
 
 def get_summary_path(name):
     i = 0
@@ -24,24 +24,27 @@ class Manager:
         print("Building Model")
         print("Batch size : {}".format(batch_size))
         print("LSTM dimension: {}".format(lstm_dim))
-        self.input_p = tf.placeholder(tf.int32, [None, max_sequence], name="input_p")
-        self.input_p_len = tf.placeholder(tf.int64, [None,], name="input_p_len")
-        self.input_h = tf.placeholder(tf.int32, [None, max_sequence], name="input_h")
-        self.input_h_len = tf.placeholder(tf.int64, [None,], name="input_h_len")
+        self.input_p = tf.placeholder(tf.int32, [None, max_sequence], name="input_p_absolute_input")
+        self.input_p_len = tf.placeholder(tf.int64, [None,], name="input_p_len_absolute_input")
+        self.input_h = tf.placeholder(tf.int32, [None, max_sequence], name="input_h_absolute_input")
+        self.input_h_len = tf.placeholder(tf.int64, [None,], name="input_h_len_absolute_input")
         self.input_y = tf.placeholder(tf.int32, [None,], name="input_y")
-        self.dropout_keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
+        self.dropout_keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob_absolute_input")
         self.batch_size = batch_size
         self.filters = []
 
         self.num_classes = num_classes
         self.hidden_size = 200
         self.vocab_size = vocab_size
+
         self.embedding_size = embedding_size
         self.max_seq = max_sequence
         self.lstm_dim = lstm_dim
+        self.reg_constant = 1e-6
+        self.lr = 3e-4
+
         self.W = None
         self.word_indice = word_indice
-        self.reg_constant = 1e-5
 
         self.l2_loss = 0
 
@@ -59,23 +62,24 @@ class Manager:
             self.global_step = tf.Variable(0, name='global_step', trainable=False)
             self.train_op = self.get_train_op()
         self.merged = tf.summary.merge_all()
-        self.log_info()
+        self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=10)
+
 
 
     def log_info(self):
         self.run_metadata = tf.RunMetadata()
         path = get_summary_path("train")
-        self.train_writer = tf.summary.FileWriter(path, self.sess.graph, filename_suffix=".train")
+        train_log_path = os.path.join(path, "train")
+        test_log_path = os.path.join(path, "test")
+        self.train_writer = tf.summary.FileWriter(train_log_path, self.sess.graph)
         self.train_writer.add_run_metadata(self.run_metadata, "train")
         print("Summary at {}".format(path))
-        self.test_writer = tf.summary.FileWriter(path, filename_suffix=".test")
-        self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=10)
+        self.test_writer = tf.summary.FileWriter(test_log_path, filename_suffix=".test")
 
     def get_train_op(self):
-        optimizer = tf.train.AdamOptimizer(1e-3)
+        optimizer = tf.train.AdamOptimizer(self.lr)
         grads_and_vars = optimizer.compute_gradients(self.loss)
         return optimizer.apply_gradients(grads_and_vars, global_step=self.global_step)
-
 
     def network(self):
         with tf.name_scope("embedding"):
@@ -90,9 +94,10 @@ class Manager:
                                     self.embedding,
                                     self.embedding_size,
                                     self.max_seq,
-                                    self.l2_loss
+                                    self.l2_loss,
+                                    self.dropout_keep_prob
                                      )
-
+        self.logits = tf.identity(self.logits, name="absolute_output")
         print(self.input_y)
         pred_loss = tf.reduce_mean(
             tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.input_y, logits=self.logits))
@@ -105,10 +110,6 @@ class Manager:
         tf.summary.scalar('acc', self.acc)
         tf.summary.scalar('loss', self.loss)
 
-        for variable in tf.global_variables():
-            # shape is an array of tf.Dimension
-            print(variable)
-
 
         return self.loss
 
@@ -120,6 +121,34 @@ class Manager:
 
     def load_path(self, id):
         return os.path.join(os.path.abspath("checkpoint"), id)
+
+    def view_lrp(self, dev_data):
+        def expand_y(y):
+            r = []
+            for yi in y:
+                if yi == 0:
+                    yp = [1,0,0]
+                elif yi == 1:
+                    yp = [0,1,0]
+                else:
+                    yp = [0,0,1]
+
+                r.append(yp)
+            return np.array(r)
+
+        print("view lrp")
+        dev_batches = get_batches(dev_data, 10, 100)
+        p, p_len, h, h_len, y = dev_batches[0]
+
+        p_emb = tf.get_variable("")
+        with DeepExplain(session=self.sess) as de:
+            logits = self.logits
+            x_input = [self.input_p, self.input_p_len, self.input_h_len, self.input_h]
+            xi = [p, p_len, h, h_len]
+            yi = expand_y(y)
+            print("grad : {}".format(tf.gradients(logits, self.input_p)))
+            E = de.explain('elrp', logits, self.input_p, p)
+
 
     def time_measure(self, step_per_epoch):
 
@@ -164,6 +193,7 @@ class Manager:
 
     def train(self, epochs, data, valid_data):
         print("Train")
+        self.log_info()
         self.sess.run(tf.global_variables_initializer())
         self.crop_len = 100
         batches = get_batches(data, self.batch_size, self.crop_len)

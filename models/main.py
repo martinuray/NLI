@@ -1,16 +1,19 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 from collections import Counter
 
 from models.FAIRmodel import FAIRModel
-from models.common import *
 from models.data_manager import *
 from models.manager import *
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
+
 def tokenize(string):
     string = re.sub(r'\(|\)', '', string)
     return string.split()
+
 
 def build_voca():
     # word is valid if count > 10 or exists in GLOVE
@@ -47,6 +50,7 @@ def build_voca():
     print("Glove found : {}".format(glove_found))
     return word2idx
 
+
 def load_voca():
     return load_pickle("word2idx")
 
@@ -67,7 +71,6 @@ def transform_corpus(path, save_path, max_sequence = 400):
         while len(l) < max_sequence:
             l.append(1)
         return np.array(l), len(tokens)
-
 
     data = []
     for datum in mnli_train:
@@ -103,12 +106,22 @@ def train_cafe():
     voca = load_voca()
     model = Manager(max_sequence=100, word_indice=voca, batch_size=args.batch_size,
                     num_classes=3, vocab_size=1000,
-                      embedding_size=300, lstm_dim=1024)
+                    embedding_size=300, lstm_dim=1024)
     data = load_pickle("train_corpus.pickle")
     validate = load_pickle("dev_corpus")
     epochs = 10
     model.train(epochs, data, validate)
 
+
+def lrp_urn():
+    voca = load_voca()
+    manager = Manager(max_sequence=100, word_indice=voca, batch_size=args.batch_size,
+                      num_classes=3, vocab_size=1000,
+                      embedding_size=300, lstm_dim=1024)
+    # Dev acc=0.6576999819278717 loss=0.8433943867683411
+    manager.load("model-1534")
+    validate = load_pickle("dev_corpus")
+    manager.view_lrp(validate)
 
 
 def sa_run():
@@ -118,6 +131,7 @@ def sa_run():
     model.load("model-13091")
     validate = load_pickle("dev_corpus")
     model.sa_analysis(validate[:100], reverse_index(voca))
+
 
 def view_weight():
     voca = load_voca()
@@ -149,3 +163,6 @@ if __name__ == "__main__":
 
     if "view_weight" in action:
         view_weight()
+
+    if "lrp_urn" in action:
+        lrp_urn()
