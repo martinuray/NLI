@@ -82,11 +82,11 @@ def transform_corpus(path, save_path, max_sequence = 400):
         label = datum["label"]
         y = label
         data.append({
-            'p':s1,
-            'p_len':s1_len,
-            'h':s2,
-            'h_len':s2_len,
-            'y':y})
+            'p': s1,
+            'p_len': s1_len,
+            'h': s2,
+            'h_len': s2_len,
+            'y': y})
 
     save_pickle(save_path, data)
     return data
@@ -143,7 +143,7 @@ def view_weight():
 
 
 if __name__ == "__main__":
-    action = "train_cafe"
+    action = "lrp_urn"
     if "build_voca" in action:
         word2idx = build_voca()
         save_pickle("word2idx", word2idx)

@@ -1,10 +1,9 @@
-import os
 import time
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+from tensorflow.python.client import device_lib
+
 from models.common import *
 
-from tensorflow.python.client import device_lib
 LOCAL_DEVICES = device_lib.list_local_devices()
 #print("Viewable device : {}".format(LOCAL_DEVICES))
 

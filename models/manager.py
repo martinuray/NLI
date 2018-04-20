@@ -1,8 +1,7 @@
-import time
-
 from tensorflow.python.client import device_lib
 
 from models.CAFE import *
+from util import *
 
 LOCAL_DEVICES = device_lib.list_local_devices()
 from tensorflow.python.client import timeline
@@ -36,6 +35,7 @@ class Manager:
         self.num_classes = num_classes
         self.hidden_size = 200
         self.vocab_size = vocab_size
+        self.sent_crop_len = 100
 
         self.embedding_size = embedding_size
         self.max_seq = max_sequence
@@ -47,9 +47,6 @@ class Manager:
         self.word_indice = word_indice
 
         self.l2_loss = 0
-
-        self.time_analyzed = False
-        self.time_count = 0
 
         self.train_op = None
         config = tf.ConfigProto(allow_soft_placement=True,
@@ -63,8 +60,6 @@ class Manager:
             self.train_op = self.get_train_op()
         self.merged = tf.summary.merge_all()
         self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=10)
-
-
 
     def log_info(self):
         self.run_metadata = tf.RunMetadata()
@@ -83,21 +78,20 @@ class Manager:
 
     def network(self):
         with tf.name_scope("embedding"):
-            # self.embedding = load_embedding(self.word_indice, self.embedding_size)
             self.embedding = tf.Variable(load_pickle("wemb"), trainable=False)
-        self.logits = cafe_network(self.input_p,
-                                   self.input_h,
-                                   self.input_p_len,
-                                   self.input_h_len,
-                                   self.batch_size,
-                                    self.num_classes,
-                                    self.embedding,
-                                    self.embedding_size,
-                                    self.max_seq,
-                                    self.l2_loss,
-                                    self.dropout_keep_prob
-                                     )
-        self.logits = tf.identity(self.logits, name="absolute_output")
+        logits = cafe_network (self.input_p,
+                               self.input_h,
+                               self.input_p_len,
+                               self.input_h_len,
+                               self.batch_size,
+                               self.num_classes,
+                               self.embedding,
+                               self.embedding_size,
+                               self.max_seq,
+                               self.l2_loss,
+                               self.dropout_keep_prob
+                               )
+        self.logits = tf.identity(logits, name="absolute_output")
         print(self.input_y)
         pred_loss = tf.reduce_mean(
             tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.input_y, logits=self.logits))
@@ -109,7 +103,6 @@ class Manager:
         tf.summary.scalar('l2loss', self.reg_constant * l2_loss)
         tf.summary.scalar('acc', self.acc)
         tf.summary.scalar('loss', self.loss)
-
 
         return self.loss
 
@@ -140,29 +133,16 @@ class Manager:
         dev_batches = get_batches(dev_data, 10, 100)
         p, p_len, h, h_len, y = dev_batches[0]
 
-        p_emb = tf.get_variable("")
+        p_emb = tf.get_variable("premise")
         with DeepExplain(session=self.sess) as de:
             logits = self.logits
             x_input = [self.input_p, self.input_p_len, self.input_h_len, self.input_h]
             xi = [p, p_len, h, h_len]
             yi = expand_y(y)
-            print("grad : {}".format(tf.gradients(logits, self.input_p)))
-            E = de.explain('elrp', logits, self.input_p, p)
-
-
-    def time_measure(self, step_per_epoch):
-
-        if self.time_analyzed == False:
-            self.time_count += 1
-            if self.time_count == 3 :
-                self.time_begin = time.time()
-
-            if self.time_count == 13:
-                elapsed = time.time() - self.time_begin
-                expected_sec = elapsed/10 * step_per_epoch
-                expected_min = int(expected_sec / 60)
-                print("Expected time per epoch : {} min".format(expected_min))
-                self.time_analyzed = True
+            print("grad : {}".format(tf.gradients(logits, p_emb)))
+            E = de.explain('elrp', logits, p_emb, p)
+            print("result----------")
+            print(E)
 
     def print_time(self):
         tl = timeline.Timeline(self.run_metadata.step_stats)
@@ -195,20 +175,20 @@ class Manager:
         print("Train")
         self.log_info()
         self.sess.run(tf.global_variables_initializer())
-        self.crop_len = 100
-        batches = get_batches(data, self.batch_size, self.crop_len)
-        dev_batches = get_batches(valid_data, 200, self.crop_len)
+        batches = get_batches(data, self.batch_size, self.sent_crop_len)
+        dev_batches = get_batches(valid_data, 200, self.sent_crop_len)
         step_per_batch = int(len(data) / self.batch_size)
         log_every = int(step_per_batch/200)
         check_dev_every = int(step_per_batch/5)
-        g_step= 0
+        g_step = 0
+
         for i in range(epochs):
             print("Epoch {}".format(i))
             s_loss = 0
             l_acc = []
+            time_estimator = TimeEstimator(len(batches), name="epoch")
             for batch in batches:
                 g_step += 1
-                self.time_measure(len(batches))
                 p, p_len, h, h_len, y = batch
                 run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
                 _, acc, loss, summary = self.sess.run([self.train_op, self.acc, self.loss, self.merged], feed_dict={
@@ -228,9 +208,9 @@ class Manager:
                 l_acc.append(acc)
                 self.train_writer.add_summary(summary, g_step)
                 self.train_writer.add_run_metadata(self.run_metadata, "meta_{}".format(g_step))
-                #self.print_time()
+                time_estimator.tick()
 
             current_step = tf.train.global_step(self.sess, self.global_step)
             path = self.saver.save(self.sess, self.save_path(), global_step=current_step)
             print("Checkpoint saved at {}".format(path))
-            print("Average loss : {} , acc : {}".format(s_loss, avg(l_acc)))
+            print("Training Average loss : {} , acc : {}".format(s_loss, avg(l_acc)))
