@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 from collections import Counter
 
@@ -109,19 +109,47 @@ def train_cafe():
                     embedding_size=300, lstm_dim=1024)
     data = load_pickle("train_corpus.pickle")
     validate = load_pickle("dev_corpus")
-    epochs = 10
+    epochs = 30
     model.train(epochs, data, validate)
 
 
-def lrp_urn():
+def train_keep_cafe():
     voca = load_voca()
     manager = Manager(max_sequence=100, word_indice=voca, batch_size=args.batch_size,
                       num_classes=3, vocab_size=1000,
                       embedding_size=300, lstm_dim=1024)
     # Dev acc=0.6576999819278717 loss=0.8433943867683411
-    manager.load("model-1534")
+    data = load_pickle("train_corpus.pickle")
     validate = load_pickle("dev_corpus")
-    manager.view_lrp(validate)
+
+    manager.load("model-15340")
+    manager.train(20, data, validate, True)
+
+
+
+def lrp_run():
+    voca = load_voca()
+    manager = Manager(max_sequence=100, word_indice=voca, batch_size=args.batch_size,
+                      num_classes=3, vocab_size=1000,
+                      embedding_size=300, lstm_dim=1024)
+    # Dev acc=0.6576999819278717 loss=0.8433943867683411
+    manager.load("hdrop2/model-41418")
+    validate = load_pickle("dev_corpus")
+
+    #manager.lrp_3way(validate, reverse_index(voca))
+    manager.lrp_entangle(validate, reverse_index(voca))
+
+def view_weights():
+    voca = load_voca()
+    manager = Manager(max_sequence=100, word_indice=voca, batch_size=args.batch_size,
+                      num_classes=3, vocab_size=1000,
+                      embedding_size=300, lstm_dim=1024)
+    # Dev acc=0.6576999819278717 loss=0.8433943867683411
+    manager.load("wattention/model-12272")
+    validate = load_pickle("dev_corpus")
+
+    manager.view_weights(validate)
+
 
 
 def sa_run():
@@ -133,7 +161,7 @@ def sa_run():
     model.sa_analysis(validate[:100], reverse_index(voca))
 
 
-def view_weight():
+def view_weight_fair():
     voca = load_voca()
     model = FAIRModel(max_sequence=400, word_indice=voca, batch_size=args.batch_size, num_classes=3, vocab_size=1000,
                       embedding_size=300, lstm_dim=1024)
@@ -142,8 +170,19 @@ def view_weight():
     model.view_weights(validate)
 
 
+def run_adverserial():
+    voca = load_voca()
+    manager = Manager(max_sequence=100, word_indice=voca, batch_size=args.batch_size,
+                      num_classes=3, vocab_size=1000,
+                      embedding_size=300, lstm_dim=1024)
+    # Dev acc=0.6576999819278717 loss=0.8433943867683411
+    #manager.load("hdrop2/model-41418")
+    manager.load("hdrop/model-42952")
+    manager.run_adverserial(voca)
+
+
 if __name__ == "__main__":
-    action = "lrp_urn"
+    action = "lrp_run"
     if "build_voca" in action:
         word2idx = build_voca()
         save_pickle("word2idx", word2idx)
@@ -161,8 +200,14 @@ if __name__ == "__main__":
     if "sa_run" in action:
         sa_run()
 
-    if "view_weight" in action:
-        view_weight()
+    if "view_weights" in action:
+        view_weights()
 
-    if "lrp_urn" in action:
-        lrp_urn()
+    if "lrp_run" in action:
+        lrp_run()
+
+    if "train_keep_cafe" in action:
+        train_keep_cafe()
+
+    if "run_adverserial" in action:
+        run_adverserial()

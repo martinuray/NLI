@@ -162,7 +162,6 @@ def highway_layer(x, size, activation, name, carry_bias=-1.0):
 def seq_xw_plus_b(x, W, b):
     input_shape = tf.shape(x)
     dim, out_dim = W.get_shape().as_list()
-    print(x)
     x_flat = tf.reshape(x, shape=[-1, dim])
     z = tf.nn.xw_plus_b(x_flat, W, b)
     out_shape = tf.concat([input_shape[:2],tf.shape(W)[1:]], axis=0)
@@ -170,10 +169,9 @@ def seq_xw_plus_b(x, W, b):
     return out
 
 
-def attention(x, name):
+def intra_attention(x, name):
     x = tf.cast(x, dtype=tf.float32)
     _, max_seq, dim = x.get_shape().as_list()
-    print(dim)
     with tf.variable_scope(name):
         W, b = weight_bias([dim, dim], [dim])
         E = tf.nn.relu(seq_xw_plus_b(x, W, b)) # [batch, seq, dim]
@@ -183,6 +181,21 @@ def attention(x, name):
         a = tf.div(a_raw, a_z) #[batch, seq, dim]
         return a
 
+def inter_attention(p, h, name):
+    _, max_seq, dim = p.get_shape().as_list()
+    with tf.variable_scope(name):
+        W, b = weight_bias([dim, dim], [dim])
+        F_p = tf.nn.relu(seq_xw_plus_b(p, W, b))  # [batch, seq_p, dim]
+        F_h = tf.nn.relu(seq_xw_plus_b(h, W, b))  # [batch, seq_h, dim]
+        E = tf.matmul(F_h, F_p, transpose_b=True) # [batch, seq_h, seq_p]
+        beta_raw = tf.transpose(tf.matmul(p, E, transpose_a=True, transpose_b=True),[0,2,1]) # [batch, seq_h, dim]
+        beta_z = tf.reshape(tf.tile(tf.reduce_sum(E, axis=2),[1,dim]), tf.shape(h)) # [batch, seq_h, dim]
+        beta = tf.div(beta_raw, beta_z)
+        alpha_raw = tf.transpose(tf.matmul(h, E, transpose_a=True), [0,2,1] ) # [batch, seq_p, dim ]
+        alpha_z = tf.reshape(tf.tile(tf.reduce_sum(E, axis=1),[1,dim]), tf.shape(p)) # [batch, seq_p, dim]
+        alpha = tf.div(alpha_raw, alpha_z)
+
+        return alpha, beta
 
 def interaction_feature(a,b, axis):
     f_concat = tf.concat([a, b], axis=axis)
@@ -249,10 +262,7 @@ def LSTM_pool(input, max_seq, input_len, dim, dropout_keep_prob, name):
     h_shape = tf.shape(hidden_states)
     hidden_states_drop = tf.nn.dropout(hidden_states, dropout_keep_prob)
     mid = tf.constant(max_seq, shape=[1]) - h_shape[1]
-    print(h_shape[0:1])
-    print(mid)
     pad_size = tf.concat([h_shape[0:1], mid, h_shape[2:]], axis=0)
-    print(pad_size)
     hidden_states = tf.concat([hidden_states_drop, tf.zeros(pad_size)], axis=1)
 
     max_pooled = tf.nn.max_pool(
