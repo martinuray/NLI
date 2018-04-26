@@ -192,6 +192,7 @@ if __name__ == "__main__":
     # reformat corpus
     if "transform" in action:
         transform_corpus(path_dict["dev_matched"], "dev_corpus")
+        transform_corpus(path_dict["training_mnli"], "train_corpus.pickle")
 
     if "train_fair" in action:
         train_fair()
