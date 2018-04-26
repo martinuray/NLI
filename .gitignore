@@ -107,3 +107,7 @@ venv.bak/
 data/glove*
 data/multinli*
 pickle
+summary/
+data/snli*
+data/shared.jsonl
+data/__MACOSX/
