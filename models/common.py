@@ -16,7 +16,11 @@ def load_pickle(name):
 
 
 def save_pickle(name, obj):
-    path = os.path.join("pickle", name)
+    directory = "pickle"
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+    path = os.path.join(directory, name)
     return pickle.dump(obj, open(path,"wb"))
 
 def reverse_index(word2idx):
