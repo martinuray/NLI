@@ -74,8 +74,10 @@ class FAIRModel:
     def bilstm_network(self):
         print("network..")
         with tf.name_scope("embedding"):
-            #self.embedding = load_embedding(self.word_indice, self.embedding_size)
-            self.embedding = tf.Variable(load_pickle("wemb"))
+            if not os.path.exists("pickle/wemb"):
+                self.embedding = load_embedding(self.word_indice, self.embedding_size)
+            else:    
+                self.embedding = tf.Variable(load_pickle("wemb"))
 
         def encode(sent, name):
             hidden_states, cell_states = biLSTM(sent, self.lstm_dim, name)

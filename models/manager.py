@@ -82,7 +82,11 @@ class Manager:
     def network(self):
         with DeepExplain(session=self.sess, graph=self.sess.graph) as de:
             with tf.name_scope("embedding"):
-                self.embedding = tf.Variable(load_pickle("wemb"), trainable=False)
+                if not os.path.exists("pickle/wemb"):
+                    self.embedding = load_embedding(self.word_indice, self.embedding_size)
+                else:
+                    self.embedding = tf.Variable(load_pickle("wemb"), trainable=False)
+
             logits = cafe_network (self.input_p,
                                    self.input_h,
                                    self.input_p_len,
