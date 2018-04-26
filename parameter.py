@@ -7,7 +7,7 @@ pa("--batch_size", type=int, default="128")
 pa("--lstm_size", type=int, default="1024")
 pa("--max_sequence", type=int, default="400")
 pa("--frange", type=int, default="0")
-
+pa("--execution_gpu", type=int, default='0')
 
 args = parser.parse_args()
 

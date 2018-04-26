@@ -1,5 +1,7 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+from parameter import args
+
+os.environ["CUDA_VISIBLE_DEVICES"] = str(args.execution_gpu) 
 
 from collections import Counter
 
