@@ -1,6 +1,7 @@
 import pickle
 
 import numpy as np
+import os
 import tensorflow as tf
 
 from parameter import *
@@ -12,12 +13,17 @@ def avg(l):
 
 def load_pickle(name):
     path = os.path.join("pickle", name)
-    return pickle.load(open(path,"rb"))
+    return pickle.load(open(path, "rb"))
 
 
 def save_pickle(name, obj):
-    path = os.path.join("pickle", name)
-    return pickle.dump(obj, open(path,"wb"))
+    directory = "pickle"
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+    path = os.path.join(directory, name)
+    return pickle.dump(obj, open(path, "wb"))
+
 
 def reverse_index(word2idx):
     idx2word = dict()

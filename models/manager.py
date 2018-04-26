@@ -82,11 +82,7 @@ class Manager:
     def network(self):
         with DeepExplain(session=self.sess, graph=self.sess.graph) as de:
             with tf.name_scope("embedding"):
-                if not os.path.exists("pickle/wemb"):
-                    self.embedding = load_embedding(self.word_indice, self.embedding_size)
-                else:
-                    self.embedding = tf.Variable(load_pickle("wemb"), trainable=False)
-
+                self.embedding = tf.Variable(load_pickle("wemb"), trainable=False)
             logits = cafe_network (self.input_p,
                                    self.input_h,
                                    self.input_p_len,
@@ -118,7 +114,12 @@ class Manager:
         self.saver.restore(self.sess, self.load_path(id))
 
     def save_path(self):
-        return os.path.join(os.path.abspath("checkpoint"),"hdrop", "model")
+        directory = os.path.join(os.path.abspath("checkpoint"),
+                                 "hdrop", "model")
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        return directory
 
     def load_path(self, id):
         return os.path.join(os.path.abspath("checkpoint"), id)

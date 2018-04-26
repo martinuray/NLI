@@ -74,10 +74,8 @@ class FAIRModel:
     def bilstm_network(self):
         print("network..")
         with tf.name_scope("embedding"):
-            if not os.path.exists("pickle/wemb"):
-                self.embedding = load_embedding(self.word_indice, self.embedding_size)
-            else:    
-                self.embedding = tf.Variable(load_pickle("wemb"))
+            self.embedding = load_embedding(self.word_indice, self.embedding_size)
+            self.embedding = tf.Variable(load_pickle("wemb"))
 
         def encode(sent, name):
             hidden_states, cell_states = biLSTM(sent, self.lstm_dim, name)
@@ -250,10 +248,12 @@ class FAIRModel:
     def load(self, id):
         self.saver.restore(self.sess, self.load_path(id))
 
-
-
     def save_path(self):
-        return os.path.join(os.path.abspath("checkpoint"), "model")
+        directory = os.path.join(os.path.abspath("checkpoint"), "model")
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        return directory
 
     def load_path(self, id):
         return os.path.join(os.path.abspath("checkpoint"), id)
@@ -317,5 +317,3 @@ class FAIRModel:
             ce = out_o_w[i,2] - out_o_w[i,0]
             en = out_o_w[i,0] - out_o_w[i,1]
             print("{0:.2f} {1:.2f}".format(ce, en))
-
-
