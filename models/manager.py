@@ -190,7 +190,6 @@ class Manager:
         run_logits, pred_high1_w_out, pred_high2_w, pred_dense_w, pred_dense_b = run_result(dev_batches[0])
         print(pred_high1_w_out)
 
-
     def lrp_entangle(self, dev_data, idx2word):
         batch_size = 30
         max_seq = 100
@@ -555,7 +554,7 @@ class Manager:
             x_input = [self.input_p, self.input_p_len, self.input_h, self.input_h_len, self.dropout_keep_prob]
             xi = [p, p_len, h, h_len, 1.0]
             yi = expand_y(y)
-            stop = [p_emb_tensor]#, h_emb_tensor]
+            stop = [p_emb_tensor, h_emb_tensor]
 
             c_e = self.logits[:, 2] - self.logits[:, 0]
             e_n = self.logits[:, 0] - self.logits[:, 1]
@@ -564,7 +563,7 @@ class Manager:
 
             E_all = []
             for label in range(3):
-                E_all.append(de.explain('elrp', self.logits[:, label], stop, x_input, xi))
+                E_all.append(de.explain('grad*input', self.logits[:, label], stop, x_input, xi))
 
             print("result----------")
             pred = np.argmax(run_logits, axis=1)
@@ -577,17 +576,17 @@ class Manager:
                 #    E = C_E
                 #else:
                 #    E = E_N
-                E_sum = list([[np.sum(E_all[label][s][i,:,:], axis=1) for s in range(1)] for label in range(3)])
-                r_max = max([np.max(E_sum[label][s]) for label in range(3) for s in range(1)])
-                r_min = min([np.min(E_sum[label][s]) for label in range(3) for s in range(1)])
+                E_sum = list([[np.sum(E_all[label][s][i,:,:], axis=1) for s in range(2)] for label in range(3)])
+                r_max = max([np.max(E_sum[label][s]) for label in range(3) for s in range(2)])
+                r_min = min([np.min(E_sum[label][s]) for label in range(3) for s in range(2)])
 
-                p_r = E_all[0][0]
-                #h_r = E_all[0][1]
+                p_r = E_all[2][0] - E_all[0][0]
+                h_r = E_all[2][1] - E_all[0][1]
                 print("--- {}({}) -- {} --- ".format(pred_label, true_label, run_logits[i]))
                 #print("sum[r]={} max={} min={}".format(np.sum(p_r[i])+ np.sum(h_r[i]), r_max, r_min))
                 _, max_seq, _ = p_r.shape
                 p_r_s = np.sum(p_r[i], axis=1)
-                #h_r_s = np.sum(h_r[i], axis=1)
+                h_r_s = np.sum(h_r[i], axis=1)
 
 
                 f.write("<html>")
@@ -595,19 +594,21 @@ class Manager:
                 f.write("<p>Premise</p>\n")
                 print("")
                 print("premise: ")
+                r_max = max([np.max(E_sum[label][s]) for label in range(3) for s in range(0,1)])
+                r_min = min([np.min(E_sum[label][s]) for label in range(3) for s in range(0,1)])
                 for j in range(max_seq):
                     print("{0}({1:.2f})".format(word(p[i,j]), p_r_s[j]), end=" ")
                     f.write(print_color_html(word(p[i,j]), E_sum[0][0][j], E_sum[1][0][j], E_sum[2][0][j], r_max, r_min))
 
                 print()
-                """
                 _, max_seq, _ = h_r.shape
                 f.write("<br><p>Hypothesis</p>\n")
                 print("hypothesis: ")
+                r_max = max([np.max(E_sum[label][s]) for label in range(3) for s in range(1, 2)])
+                r_min = min([np.min(E_sum[label][s]) for label in range(3) for s in range(1, 2)])
                 for j in range(max_seq):
                     print("{0}({1:.2f})".format(word(h[i,j]), h_r_s[j]), end=" ")
                     f.write(print_color_html(word(h[i,j]), E_sum[0][1][j], E_sum[1][1][j], E_sum[2][1][j], r_max, r_min))
-                """
                 print()
                 f.write("</div><hr>")
             f.write("</html>")
