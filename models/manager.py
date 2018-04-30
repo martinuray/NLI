@@ -781,6 +781,7 @@ class Manager:
                     self.hypothesis_exact_match: h_exact,
                     self.input_y: y,
                     self.dropout_keep_prob: 0.8,
+                    self.is_train: True,
                 }, run_metadata=self.run_metadata, options=run_options)
 
                 if g_step % log_every == 1 or g_step < 5:
