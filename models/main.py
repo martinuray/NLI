@@ -1,13 +1,18 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+from parameter import args
+os.environ["CUDA_VISIBLE_DEVICES"] = str(args.use_gpu)
 
 from collections import Counter
 
 from models.FAIRmodel import FAIRModel
 from models.data_manager import *
 from models.manager import *
-
+from models.common import construct_one_hot_feature_tensor
 tf.logging.set_verbosity(tf.logging.INFO)
+
+PADDING = "<PAD>"
+POS_Tagging = [PADDING, 'WP$', 'RBS', 'SYM', 'WRB', 'IN', 'VB', 'POS', 'TO', ':', '-RRB-', '$', 'MD', 'JJ', '#', 'CD', '``', 'JJR', 'NNP', "''", 'LS', 'VBP', 'VBD', 'FW', 'RBR', 'JJS', 'DT', 'VBG', 'RP', 'NNS', 'RB', 'PDT', 'PRP$', '.', 'XX', 'NNPS', 'UH', 'EX', 'NN', 'WDT', 'VBN', 'VBZ', 'CC', ',', '-LRB-', 'PRP', 'WP']
+POS_dict = {pos:i for i, pos in enumerate(POS_Tagging)}
 
 
 def tokenize(string):
@@ -55,6 +60,50 @@ def load_voca():
     return load_pickle("word2idx")
 
 
+def load_shared_content(fh, shared_content):
+    for line in fh:
+        row = line.rstrip().split("\t")
+        key = row[0]
+        value = json.loads(row[1])
+        shared_content[key] = value
+
+def load_mnli_shared_content():
+    shared_file_exist = False
+    # shared_path = config.datapath + "/shared_2D_EM.json"
+    # shared_path = config.datapath + "/shared_anto.json"
+    # shared_path = config.datapath + "/shared_NER.json"
+    shared_path = path_dict["shared_mnli"]
+    # shared_path = "../shared.json"
+    print(shared_path)
+    if os.path.isfile(shared_path):
+        shared_file_exist = True
+    # shared_content = {}
+    assert shared_file_exist
+    # if not shared_file_exist and config.use_exact_match_feature:
+    #     with open(shared_path, 'w') as f:
+    #         json.dump(dict(reconvert_shared_content), f)
+    # elif config.use_exact_match_feature:
+    with open(shared_path) as f:
+        shared_content = {}
+        load_shared_content(f, shared_content)
+        # shared_content = json.load(f)
+    return shared_content
+
+def generate_pos_feature_tensor(parses, left_padding_and_cropping_pairs):
+    pos_vectors = []
+    for parse in parses:
+        pos = parsing_parse(parse)
+        pos_vector = [(idx, POS_dict.get(tag, 0)) for idx, tag in enumerate(pos)]
+        pos_vectors.append(pos_vector)
+
+    return construct_one_hot_feature_tensor(pos_vectors, left_padding_and_cropping_pairs, 2, column_size=len(POS_Tagging))
+
+def parsing_parse(parse):
+    base_parse = [s.rstrip(" ").rstrip(")") for s in parse.split("(") if ")" in s]
+    pos = [pair.split(" ")[0] for pair in base_parse]
+    return pos
+
+
 def transform_corpus(path, save_path, max_sequence = 400):
     voca = load_voca()
     mnli_train = load_nli_data(path)
@@ -73,9 +122,18 @@ def transform_corpus(path, save_path, max_sequence = 400):
         return np.array(l), len(tokens)
 
     data = []
+    shared_content = load_mnli_shared_content() 
+    premise_pad_crop_pair = hypothesis_pad_crop_pair = [(0,0)] #* args.batch_size
     for datum in mnli_train:
+        pair_id = datum['pairID']
         s1_tokenize = tokenize(datum['sentence1_binary_parse'])
         s2_tokenize = tokenize(datum['sentence2_binary_parse'])
+
+#        p_pos = generate_pos_feature_tensor(datum['sentence1_parse'], premise_pad_crop_pair)
+#        h_pos = generate_pos_feature_tensor(datum['sentence2_parse'], hypothesis_pad_crop_pair)
+
+        p_exact = construct_one_hot_feature_tensor([shared_content[pair_id]["sentence1_token_exact_match_with_s2"][:]], premise_pad_crop_pair, 1)
+        h_exact = construct_one_hot_feature_tensor([shared_content[pair_id]["sentence2_token_exact_match_with_s1"][:]], hypothesis_pad_crop_pair, 1)
 
         s1, s1_len = convert(s1_tokenize)
         s2, s2_len = convert(s2_tokenize)
@@ -83,9 +141,11 @@ def transform_corpus(path, save_path, max_sequence = 400):
         y = label
         data.append({
             'p': s1,
-            'p_len': s1_len,
+            'p_pos': datum['sentence1_parse'],
+            'p_exact': p_exact,
             'h': s2,
-            'h_len': s2_len,
+            'h_pos': datum['sentence2_parse'],
+            'h_exact': h_exact,
             'y': y})
 
     save_pickle(save_path, data)
@@ -182,32 +242,33 @@ def run_adverserial():
 
 
 if __name__ == "__main__":
-    action = "lrp_run"
-    if "build_voca" in action:
+    actions = ["transform", "train_cafe"]
+    if "build_voca" in actions:
         word2idx = build_voca()
         save_pickle("word2idx", word2idx)
 
     # reformat corpus
-    if "transform" in action:
+    if "transform" in actions:
         transform_corpus(path_dict["dev_matched"], "dev_corpus")
+        transform_corpus(path_dict["training_mnli"], "train_corpus.pickle")
 
-    if "train_fair" in action:
+    if "train_fair" in actions:
         train_fair()
 
-    if "train_cafe" in action:
+    if "train_cafe" in actions:
         train_cafe()
 
-    if "sa_run" in action:
+    if "sa_run" in actions:
         sa_run()
 
-    if "view_weights" in action:
+    if "view_weights" in actions:
         view_weights()
 
-    if "lrp_run" in action:
+    if "lrp_run" in actions:
         lrp_run()
 
-    if "train_keep_cafe" in action:
+    if "train_keep_cafe" in actions:
         train_keep_cafe()
 
-    if "run_adverserial" in action:
+    if "run_adverserial" in actions:
         run_adverserial()

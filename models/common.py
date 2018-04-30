@@ -5,6 +5,9 @@ import tensorflow as tf
 
 from parameter import *
 
+PADDING = "<PAD>"
+POS_Tagging = [PADDING, 'WP$', 'RBS', 'SYM', 'WRB', 'IN', 'VB', 'POS', 'TO', ':', '-RRB-', '$', 'MD', 'JJ', '#', 'CD', '``', 'JJR', 'NNP', "''", 'LS', 'VBP', 'VBD', 'FW', 'RBR', 'JJS', 'DT', 'VBG', 'RP', 'NNS', 'RB', 'PDT', 'PRP$', '.', 'XX', 'NNPS', 'UH', 'EX', 'NN', 'WDT', 'VBN', 'VBZ', 'CC', ',', '-LRB-', 'PRP', 'WP']
+POS_dict = {pos:i for i, pos in enumerate(POS_Tagging)}
 
 def avg(l):
     return sum(l)/len(l)
@@ -44,6 +47,13 @@ def length(sequence):
     return length, mask
 
 
+def load_wemb(word_indice, embedding_size):
+    if not os.path.exists("pickle/wemb"):
+        return load_embedding(word_indice, embedding_size)
+    
+    return tf.Variable(load_pickle("wemb"), trainable=False)
+
+
 def glove_voca():
     path = path_dict["embedding_data_path"]
     voca = set()
@@ -53,33 +63,145 @@ def glove_voca():
             voca.add(s[0])
     return voca
 
-
+"""
 def get_batches(data, batch_size, crop_max = 100):
-    # data is fully numpy array here
+    # data is fully numpy array here   p, p_pos, p_exact, h, h_pos, h_exact, y = batch
     step_size = int((len(data) + batch_size - 1) / batch_size)
     new_data = []
     for step in range(step_size):
         p = []
-        p_len_list = []
+        p_pos_list = []
+        p_exact_list = []
         h = []
-        h_len_list = []
+        h_pos_list = []
+        h_exact_list = []
         y = []
         for i in range(batch_size):
             idx = step * batch_size + i
             if idx >= len(data):
                 break
-            p_len = min(data[idx]['p_len'], crop_max)
             p.append(data[idx]['p'][:crop_max])
-            p_len_list.append(p_len)
+            p_pos_list.append(data[idx]['p_pos'][:crop_max])
+            p_exact_list.append(data[idx]['p_exact'][:crop_max])
 
-            h_len = min(data[idx]['h_len'], crop_max)
             h.append(data[idx]['h'][:crop_max])
-            h_len_list.append(h_len)
+            h_pos_list.append(data[idx]['h_pos'][:crop_max])
+            h_exact_list.append(data[idx]['h_exact'][:crop_max])
 
             y.append(data[idx]['y'])
         if len(p) > 0:
             new_data.append((np.stack(p), np.stack(p_len_list), np.stack(h), np.stack(h_len_list), np.stack(y)))
     return new_data
+"""
+def parse_to_pos_vector(parse, left_padding_and_cropping_pair = (0,0)): # ONE HOT
+    pos = parsing_parse(parse)
+    pos_vector = [POS_dict.get(tag,0) for tag in pos]
+    left_padding, left_cropping = left_padding_and_cropping_pair
+    vector = np.zeros((FIXED_PARAMETERS["seq_length"],len(POS_Tagging)))
+    assert left_padding == 0 or left_cropping == 0
+
+    for i in range(FIXED_PARAMETERS["seq_length"]):
+        if i < len(pos_vector):
+            vector[i + left_padding, pos_vector[i + left_cropping]] = 1
+        else:
+            break
+    return vector
+
+def generate_pos_feature_tensor(parses, left_padding_and_cropping_pairs):
+    pos_vectors = []
+    for parse in parses:
+        pos = parsing_parse(parse)
+        pos_vector = [(idx, POS_dict.get(tag, 0)) for idx, tag in enumerate(pos)]
+        pos_vectors.append(pos_vector)
+
+    return construct_one_hot_feature_tensor(pos_vectors, left_padding_and_cropping_pairs, 2, column_size=len(POS_Tagging))
+
+
+def construct_one_hot_feature_tensor(sequences,
+                                     left_padding_and_cropping_pairs, dim,
+                                     column_size=None, dtype=np.int32):
+    """
+    sequences: [[(idx, val)... ()]...[]]
+    left_padding_and_cropping_pairs: [[(0,0)...] ... []]
+    """
+    tensor_list = []
+    for sequence, pad_crop_pair in zip(sequences,
+                                       left_padding_and_cropping_pairs):
+        left_padding, left_cropping = pad_crop_pair
+        if dim == 1:
+            vec = np.zeros((args.max_sequence))
+            for num in sequence:
+                if num + left_padding - left_cropping < args.max_sequence and num + left_padding - left_cropping >= 0:
+                    vec[num + left_padding - left_cropping] = 1
+            tensor_list.append(vec)
+        elif dim == 2:
+            assert column_size
+            mtrx = np.zeros((args.max_sequence, column_size))
+            for row, col in sequence:
+                if row + left_padding - left_cropping < args.max_sequence and row + left_padding - left_cropping >= 0 and col < column_size:
+                    mtrx[row + left_padding - left_cropping, col] = 1
+            tensor_list.append(mtrx)
+
+        else:
+            raise NotImplementedError
+
+    return np.array(tensor_list, dtype=dtype)
+
+
+def fill_feature_vector_with_cropping_or_padding(sequences, left_padding_and_cropping_pairs, dim, column_size=None, dtype=np.int32):
+    if dim == 1:
+        list_of_vectors = []
+        for sequence, pad_crop_pair in zip(sequences, left_padding_and_cropping_pairs):
+            vec = np.zeros((args.max_sequence))
+            left_padding, left_cropping = pad_crop_pair
+            for i in range(args.max_sequence):
+                if i + left_padding < args.max_sequence and i - left_cropping < len(sequence):
+                    vec[i + left_padding] = sequence[i + left_cropping]
+                else:
+                    break
+            list_of_vectors.append(vec)
+        return np.array(list_of_vectors, dtype=dtype)
+    elif dim == 2:
+        assert column_size
+        tensor_list = []
+        for sequence, pad_crop_pair in zip(sequences, left_padding_and_cropping_pairs):
+            left_padding, left_cropping = pad_crop_pair
+            mtrx = np.zeros((args.max_sequence, column_size))
+            for row_idx in range(args.max_sequence):
+                if row_idx + left_padding < args.max_sequence and row_idx < len(sequence) + left_cropping:
+                    for col_idx, content in enumerate(sequence[row_idx + left_cropping]):
+                        mtrx[row_idx + left_padding, col_idx] = content
+                else:
+                    break
+            tensor_list.append(mtrx)
+        return np.array(tensor_list, dtype=dtype)
+    else:
+        raise NotImplementedError
+
+
+def parsing_parse(parse):
+    base_parse = [s.rstrip(" ").rstrip(")") for s in parse.split("(") if ")" in s]
+    pos = [pair.split(" ")[0] for pair in base_parse]
+    return pos
+
+
+def get_batches(dataset, start_index, end_index, crop_max = 100):
+    # data is fully numpy array here
+    indices = range(start_index, end_index)
+    
+    premise_pad_crop_pair = hypothesis_pad_crop_pair = [(0,0)] * len(indices)
+    p = fill_feature_vector_with_cropping_or_padding([dataset[i]['p'][:] for i in indices], premise_pad_crop_pair, 1)
+    h = fill_feature_vector_with_cropping_or_padding([dataset[i]['h'][:] for i in indices], hypothesis_pad_crop_pair, 1)
+
+    p_pos = generate_pos_feature_tensor([dataset[i]['p_pos'][:] for i in indices], premise_pad_crop_pair)
+    h_pos = generate_pos_feature_tensor([dataset[i]['h_pos'][:] for i in indices], hypothesis_pad_crop_pair)
+
+    p_exact = [dataset[i]['p_exact'][:] for i in indices]
+    h_exact = [dataset[i]['h_exact'][:] for i in indices]
+    y = [dataset[i]['y'] for i in indices]
+
+    return p, h, p_pos, h_pos, p_exact, h_exact, y
+
 
 
 def load_embedding(word_indices, word_embedding_dimension, divident=1.0):

@@ -43,21 +43,22 @@ def cafe_network(input_p, input_h, input_p_len, input_h_len, batch_size, num_cla
         return tf.stack([v_1, v_2, v_3], axis=2)
 
     with tf.device('/gpu:0'):
-        p_enc1, p_intra_att = encode(input_p[:, :p_len], p_len, "premise")  # [batch, s_len, dim*2]
-        p_intra = align_fm(p_enc1, p_intra_att, input_p_len, "premise_intra") # [batch, s_len, 3]
+        #p_enc1, p_intra_att = encode(input_p[:, :p_len], p_len, "premise")  # [batch, s_len, dim*2]
+        #p_intra = align_fm(p_enc1, p_intra_att, input_p_len, "premise_intra") # [batch, s_len, 3]
 
-    with tf.device('/gpu:0'):
-        h_enc1, h_intra_att = encode(input_h[:, :h_len], h_len, "hypothesis")
-        h_intra = align_fm(h_enc1, h_intra_att, input_h_len, "hypothesis_intra")
+        #h_enc1, h_intra_att = encode(input_h[:, :h_len], h_len, "hypothesis")
+        #h_intra = align_fm(h_enc1, h_intra_att, input_h_len, "hypothesis_intra")
 
-        alpha, beta = inter_attention(p_enc1, h_enc1, "inter_attention")
-        p_inter = align_fm(p_enc1, alpha, input_p_len, "premise_inter")
-        h_inter = align_fm(h_enc1, beta, input_h_len, "hypothesis_inter")
+        #alpha, beta = inter_attention(p_enc1, h_enc1, "inter_attention")
+        #p_inter = align_fm(p_enc1, alpha, input_p_len, "premise_inter")
+        #h_inter = align_fm(h_enc1, beta, input_h_len, "hypothesis_inter")
 
 
-        p_combine = tf.concat([p_enc1, p_intra, p_inter], axis=2)
-        h_combine = tf.concat([h_enc1, h_intra, h_inter], axis=2)
+        #p_combine = tf.concat([p_enc1, p_intra, p_inter], axis=2)
+        #h_combine = tf.concat([h_enc1, h_intra, h_inter], axis=2)
 
+        p_combine = input_p
+        h_combine = input_h
         encode_width = highway_size + 6  # h_intra has 3 elem, h_inter has 3 elem
 
         p_encode = LSTM_pool(p_combine, max_seq, input_p_len, encode_width, dropout_keep_prob, "p_lstm") # [batch, dim*2+3]

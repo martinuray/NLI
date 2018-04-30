@@ -26,10 +26,22 @@ class Manager:
         print("Building Model")
         print("Batch size : {}".format(batch_size))
         print("LSTM dimension: {}".format(lstm_dim))
-        self.input_p = tf.placeholder(tf.int32, [None, max_sequence], name="input_p_absolute_input")
-        self.input_p_len = tf.placeholder(tf.int64, [None,], name="input_p_len_absolute_input")
-        self.input_h = tf.placeholder(tf.int32, [None, max_sequence], name="input_h_absolute_input")
-        self.input_h_len = tf.placeholder(tf.int64, [None,], name="input_h_len_absolute_input")
+        self.premise_x = tf.placeholder(tf.int32, [None, max_sequence], name='premise')
+        self.hypothesis_x = tf.placeholder(tf.int32, [None, max_sequence], name='hypothesis')
+        self.premise_pos = tf.placeholder(tf.int32, [None, max_sequence, 47], name='premise_pos')
+        self.hypothesis_pos = tf.placeholder(tf.int32, [None, max_sequence, 47], name='hypothesis_pos')
+        self.premise_char = tf.placeholder(tf.int32, [None, max_sequence, args.char_in_word_size], name='premise_char')
+        self.hypothesis_char = tf.placeholder(tf.int32, [None, max_sequence, args.char_in_word_size], name='hypothesis_char')
+        self.premise_exact_match = tf.placeholder(tf.int32, [None, max_sequence,1], name='premise_exact_match')
+        self.hypothesis_exact_match = tf.placeholder(tf.int32, [None, max_sequence,1], name='hypothesis_exact_match')
+
+        self.is_train = tf.placeholder('bool', [], name='is_train')
+	# Function for embedding lOokup and dropout at embedding layer
+        def emb_drop(E, x):
+            emb = tf.nn.embedding_lookup(E, x)
+            emb_drop = tf.cond(self.is_train, lambda: tf.nn.dropout(emb, self.dropout_keep_prob), lambda: emb)
+            return emb_drop
+        
         self.input_y = tf.placeholder(tf.int32, [None,], name="input_y")
         self.dropout_keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob_absolute_input")
         self.batch_size = batch_size
@@ -52,6 +64,81 @@ class Manager:
         self.l2_loss = 0
 
         self.train_op = None
+        self.emb_train=False
+
+        with tf.name_scope("embedding"):
+                self.embedding = tf.Variable(load_wemb(self.word_indice, self.embedding_size), trainable=False)
+
+        prem_seq_lengths, prem_mask = self.blocks_length(self.premise_x)  # mask [N, L , 1]
+        hyp_seq_lengths, hyp_mask = self.blocks_length(self.hypothesis_x)
+        self.prem_mask = prem_mask
+        self.hyp_mask = hyp_mask
+
+        def dropout(x, keep_prob, is_train, noise_shape=None, seed=None, name=None):
+            with tf.name_scope(name or "dropout"):
+                # if keep_prob < 1.0:
+                d = tf.nn.dropout(x, keep_prob, noise_shape=noise_shape, seed=seed)
+                out = tf.cond(is_train, lambda: d, lambda: x)
+                return out
+
+        def conv1d(in_, filter_size, height, padding, is_train=None, keep_prob=1.0, scope=None):
+            with tf.variable_scope(scope or "conv1d"):
+                num_channels = in_.get_shape()[-1]
+                filter_ = tf.get_variable("filter", shape=[1, height, num_channels, filter_size], dtype='float')
+                bias = tf.get_variable("bias", shape=[filter_size], dtype='float')
+                strides = [1, 1, 1, 1]
+                # if is_train is not None and keep_prob < 1.0:
+                in_ = dropout(in_, keep_prob, is_train)
+                xxc = tf.nn.conv2d(in_, filter_, strides, padding) + bias  # [N*M, JX, W/filter_stride, d]
+                out = tf.reduce_max(tf.nn.relu(xxc), 2)  # [-1, JX, d]
+                return out
+
+        def multi_conv1d(in_, filter_sizes, heights, padding, is_train=None, keep_prob=1.0, scope=None):
+            with tf.variable_scope(scope or "multi_conv1d"):
+                assert len(filter_sizes) == len(heights)
+                outs = []
+                for filter_size, height in zip(filter_sizes, heights):
+                    if filter_size == 0:
+                        continue
+                    out = conv1d(in_, filter_size, height, padding, is_train=is_train, keep_prob=keep_prob, scope="conv1d_{}".format(height))
+                    outs.append(out)
+                # concat_out = tf.concat(2, outs)
+                concat_out = tf.concat(outs, axis=2)
+                return concat_out
+
+        ### Embedding layer ###   # TODO: move to CAFE
+        with tf.variable_scope("emb"):
+            with tf.variable_scope("emb_var"), tf.device("/cpu:0"):
+                self.E = tf.Variable(self.embedding, trainable=self.emb_train)
+                self.premise_in = emb_drop(self.E, self.premise_x)   #P
+                self.hypothesis_in = emb_drop(self.E, self.hypothesis_x)  #H
+        """
+        with tf.variable_scope("char_emb"):
+            char_emb_mat = tf.get_variable("char_emb_mat", shape=[args.char_vocab_size, args.char_emb_size])
+            with tf.variable_scope("char") as scope:
+                char_pre = tf.nn.embedding_lookup(char_emb_mat, self.premise_char)
+                char_hyp = tf.nn.embedding_lookup(char_emb_mat, self.hypothesis_char)
+
+                filter_sizes = list(map(int, args.out_channel_dims.split(','))) #[100]
+                heights = list(map(int, args.filter_heights.split(',')))        #[5]
+                assert sum(filter_sizes) == args.char_out_size, (filter_sizes, args.char_out_size)
+                with tf.variable_scope("conv") as scope:
+                    conv_pre = multi_conv1d(char_pre, filter_sizes, heights, "VALID", self.is_train, args.keep_rate, scope='conv')
+                    scope.reuse_variables()
+                    conv_hyp = multi_conv1d(char_hyp, filter_sizes, heights, "VALID", self.is_train, args.keep_rate, scope='conv')
+                    conv_pre = tf.reshape(conv_pre, [-1, max_sequence, args.char_out_size])
+                    conv_hyp = tf.reshape(conv_hyp, [-1, max_sequence, args.char_out_size])
+            self.premise_in = tf.concat([self.premise_in, conv_pre], axis=2)
+            self.hypothesis_in = tf.concat([self.hypothesis_in, conv_hyp], axis=2)
+
+        """
+        self.premise_in = tf.concat((self.premise_in, tf.cast(self.premise_pos, tf.float32)), axis=2)
+        self.hypothesis_in = tf.concat((self.hypothesis_in, tf.cast(self.hypothesis_pos, tf.float32)), axis=2)
+
+        self.premise_in = tf.concat([self.premise_in, tf.cast(self.premise_exact_match, tf.float32)], axis=2)
+        self.hypothesis_in = tf.concat([self.hypothesis_in, tf.cast(self.hypothesis_exact_match, tf.float32)], axis=2)
+
+
         config = tf.ConfigProto(allow_soft_placement=True,
                                   log_device_placement=True )
         config.gpu_options.allow_growth = True
@@ -74,6 +161,19 @@ class Manager:
         print("Summary at {}".format(path))
         self.test_writer = tf.summary.FileWriter(test_log_path, filename_suffix=".test")
 
+    def blocks_length(self, sequence):
+        """
+        Get true length of sequences (without padding), and mask for true-length in max-length.
+        Input of shape: (batch_size, max_seq_length, hidden_dim)
+                Output shapes, 
+        length: (batch_size)
+        mask: (batch_size, max_seq_length, 1)
+        """
+        populated = tf.sign(tf.abs(sequence))
+        length = tf.cast(tf.reduce_sum(populated, axis=1), tf.int32)
+        mask = tf.cast(tf.expand_dims(populated, -1), tf.float32)
+        return length, mask
+
     def get_train_op(self):
         optimizer = tf.train.AdamOptimizer(self.lr)
         grads_and_vars = optimizer.compute_gradients(self.loss)
@@ -82,11 +182,14 @@ class Manager:
     def network(self):
         with DeepExplain(session=self.sess, graph=self.sess.graph) as de:
             with tf.name_scope("embedding"):
-                self.embedding = tf.Variable(load_pickle("wemb"), trainable=False)
-            logits = cafe_network (self.input_p,
-                                   self.input_h,
-                                   self.input_p_len,
-                                   self.input_h_len,
+                self.embedding = load_wemb(self.word_indice, self.embedding_size)
+
+            length_p, _ = self.blocks_length(self.premise_in)
+            length_h, _ = self.blocks_length(self.hypothesis_in)
+            logits = cafe_network (self.premise_in,
+                                   self.hypothesis_in,
+                                   length_p,
+                                   length_h,
                                    self.batch_size,
                                    self.num_classes,
                                    self.embedding,
@@ -640,13 +743,16 @@ class Manager:
 
         print("Dev acc={} loss={} ".format(avg(acc_sum), avg(loss_sum)))
 
+
+
+
     def train(self, epochs, data, valid_data, rerun=False):
         print("Train")
         self.log_info()
         if not rerun:
             self.sess.run(tf.global_variables_initializer())
-        batches = get_batches(data, self.batch_size, self.sent_crop_len)
-        dev_batches = get_batches(valid_data, 200, self.sent_crop_len)
+#        batches = get_batches(data, self.batch_size, self.sent_crop_len)
+ #       dev_batches = get_batches(valid_data, 200, self.sent_crop_len)
         step_per_batch = int(len(data) / self.batch_size)
         log_every = int(step_per_batch/200)
         check_dev_every = int(step_per_batch/5)
@@ -656,17 +762,23 @@ class Manager:
             print("Epoch {}".format(i))
             s_loss = 0
             l_acc = []
-            time_estimator = TimeEstimator(len(batches), name="epoch")
-            shuffle(batches)
-            for batch in batches:
+            time_estimator = TimeEstimator(self.batch_size, name="epoch")
+            #shuffle(batches)
+
+            for j in range(step_per_batch):
+                batches = get_batches(data, j*self.batch_size, (j+1)*self.batch_size, self.sent_crop_len)
                 g_step += 1
-                p, p_len, h, h_len, y = batch
+                p, h, p_pos, h_pos, p_exact, h_exact, y = batches
                 run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
                 _, acc, loss, summary = self.sess.run([self.train_op, self.acc, self.loss, self.merged], feed_dict={
-                    self.input_p: p,
-                    self.input_p_len: p_len,
-                    self.input_h: h,
-                    self.input_h_len: h_len,
+                    self.premise_x: p,
+                    self.hypothesis_x: h,
+                    self.premise_pos: p_pos,
+                    self.hypothesis_pos: h_pos,
+                    #self.premise_char: p_char,
+                    #self.hypothesis_char: h_char,
+                    self.premise_exact_match: p_exact,
+                    self.hypothesis_exact_match: h_exact,
                     self.input_y: y,
                     self.dropout_keep_prob: 0.8,
                 }, run_metadata=self.run_metadata, options=run_options)
@@ -685,3 +797,12 @@ class Manager:
             path = self.saver.save(self.sess, self.save_path(), global_step=current_step)
             print("Checkpoint saved at {}".format(path))
             print("Training Average loss : {} , acc : {}".format(s_loss, avg(l_acc)))
+
+"""
+data.append({
+            'p': s1,
+            'p_pos': p_pos,
+            'p_exact': p_exact,
+            'h': s2,
+            'h_pos': h_pos,
+            'h_exact': h_exact,"""
