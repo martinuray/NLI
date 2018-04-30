@@ -142,10 +142,10 @@ def transform_corpus(path, save_path, max_sequence = 400):
         data.append({
             'p': s1,
             'p_pos': datum['sentence1_parse'],
-            'p_exact': p_exact,
+            'p_exact': p_exact.T,
             'h': s2,
             'h_pos': datum['sentence2_parse'],
-            'h_exact': h_exact,
+            'h_exact': h_exact.T,
             'y': y})
 
     save_pickle(save_path, data)
@@ -242,7 +242,7 @@ def run_adverserial():
 
 
 if __name__ == "__main__":
-    actions = ["transform", "train_cafe"]
+    actions = ["train_cafe"]
     if "build_voca" in actions:
         word2idx = build_voca()
         save_pickle("word2idx", word2idx)

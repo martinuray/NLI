@@ -217,7 +217,11 @@ class Manager:
         self.saver.restore(self.sess, self.load_path(id))
 
     def save_path(self):
-        return os.path.join(os.path.abspath("checkpoint"),"hdrop", "model")
+        directory = os.path.join(os.path.abspath("checkpoint"), "hdrop", "model")
+        if not os.path.isdir(directory):
+            os.makedirs(directory)
+
+        return directory
 
     def load_path(self, id):
         return os.path.join(os.path.abspath("checkpoint"), id)
@@ -722,19 +726,26 @@ class Manager:
         with open('timeline.json', 'w') as f:
             f.write(ctf)
 
-    def check_dev(self, batches, g_step):
+    def check_dev(self, data, g_step):
         acc_sum = []
         loss_sum = []
         step = 0
-        for batch in batches:
-            p, p_len, h, h_len, y = batch
+
+        step_per_batch = int(len(data) / 200)
+        for j in range(step_per_batch):
+            p, h, p_pos, h_pos, p_exact, h_exact, y = get_batches(data, j*self.batch_size, (j+1)*self.batch_size, self.sent_crop_len)
             acc, loss, summary = self.sess.run([self.acc, self.loss, self.merged], feed_dict={
-                self.input_p: p,
-                self.input_p_len: p_len,
-                self.input_h: h,
-                self.input_h_len: h_len,
-                self.input_y: y,
-                self.dropout_keep_prob: 1.0,
+                    self.premise_x: p,
+                    self.hypothesis_x: h,
+                    self.premise_pos: p_pos,
+                    self.hypothesis_pos: h_pos,
+                    #self.premise_char: p_char,
+                    #self.hypothesis_char: h_char,
+                    self.premise_exact_match: p_exact,
+                    self.hypothesis_exact_match: h_exact,
+                    self.input_y: y,
+                    self.dropout_keep_prob: 1.0,
+                    self.is_train: False, 
             }, run_metadata=self.run_metadata)
             acc_sum.append(acc)
             loss_sum.append(loss)
@@ -752,7 +763,7 @@ class Manager:
         if not rerun:
             self.sess.run(tf.global_variables_initializer())
 #        batches = get_batches(data, self.batch_size, self.sent_crop_len)
- #       dev_batches = get_batches(valid_data, 200, self.sent_crop_len)
+        #dev_batches = get_batches_val(valid_data, 200, self.sent_crop_len)
         step_per_batch = int(len(data) / self.batch_size)
         log_every = int(step_per_batch/200)
         check_dev_every = int(step_per_batch/5)
@@ -787,7 +798,7 @@ class Manager:
                 if g_step % log_every == 1 or g_step < 5:
                     print("step{} : {} acc : {} ".format(g_step, loss, acc))
                 if g_step % check_dev_every == 0 :
-                    self.check_dev(dev_batches, g_step)
+                    self.check_dev(valid_data, g_step)
                 s_loss += loss
                 l_acc.append(acc)
                 self.train_writer.add_summary(summary, g_step)
@@ -799,11 +810,3 @@ class Manager:
             print("Checkpoint saved at {}".format(path))
             print("Training Average loss : {} , acc : {}".format(s_loss, avg(l_acc)))
 
-"""
-data.append({
-            'p': s1,
-            'p_pos': p_pos,
-            'p_exact': p_exact,
-            'h': s2,
-            'h_pos': h_pos,
-            'h_exact': h_exact,"""

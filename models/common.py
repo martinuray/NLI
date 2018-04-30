@@ -63,11 +63,15 @@ def glove_voca():
             voca.add(s[0])
     return voca
 
+
 """
-def get_batches(data, batch_size, crop_max = 100):
+def get_batches_val(data, batch_size, crop_max = 100):
     # data is fully numpy array here   p, p_pos, p_exact, h, h_pos, h_exact, y = batch
     step_size = int((len(data) + batch_size - 1) / batch_size)
     new_data = []
+
+    premise_pad_crop_pair = hypothesis_pad_crop_pair = [(0,0)]
+
     for step in range(step_size):
         p = []
         p_pos_list = []
@@ -80,19 +84,24 @@ def get_batches(data, batch_size, crop_max = 100):
             idx = step * batch_size + i
             if idx >= len(data):
                 break
-            p.append(data[idx]['p'][:crop_max])
-            p_pos_list.append(data[idx]['p_pos'][:crop_max])
-            p_exact_list.append(data[idx]['p_exact'][:crop_max])
+            p.append(fill_feature_vector_with_cropping_or_padding([data[idx]['p'][:]], premise_pad_crop_pair, 1))
+            h.append(fill_feature_vector_with_cropping_or_padding([data[idx]['h'][:]], premise_pad_crop_pair, 1))
 
-            h.append(data[idx]['h'][:crop_max])
-            h_pos_list.append(data[idx]['h_pos'][:crop_max])
-            h_exact_list.append(data[idx]['h_exact'][:crop_max])
+            p_pos = generate_pos_feature_tensor([data[idx]['p_pos'][:]], premise_pad_crop_pair)
+            h_pos = generate_pos_feature_tensor([data[idx]['h_pos'][:]], hypothesis_pad_crop_pair)
+    
+            p_exact = [dataset[i]['p_exact'][:] for i in indices]
+            h_exact = [dataset[i]['h_exact'][:] for i in indices]
+            y = [dataset[i]['y'] for i in indices]
+
+
 
             y.append(data[idx]['y'])
         if len(p) > 0:
             new_data.append((np.stack(p), np.stack(p_len_list), np.stack(h), np.stack(h_len_list), np.stack(y)))
     return new_data
 """
+
 def parse_to_pos_vector(parse, left_padding_and_cropping_pair = (0,0)): # ONE HOT
     pos = parsing_parse(parse)
     pos_vector = [POS_dict.get(tag,0) for tag in pos]
