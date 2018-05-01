@@ -202,6 +202,15 @@ def get_batches(dataset, start_index, end_index, crop_max = 100):
     p = fill_feature_vector_with_cropping_or_padding([dataset[i]['p'][:] for i in indices], premise_pad_crop_pair, 1)
     h = fill_feature_vector_with_cropping_or_padding([dataset[i]['h'][:] for i in indices], hypothesis_pad_crop_pair, 1)
 
+    def charecterize(tokens):
+        return [c for token in tokens for c in token]
+
+    p_c = [dataset[i]['p_char'][:] for i in indices]
+    h_c = [dataset[i]['h_char'][:] for i in indices]
+    
+    p_char = fill_feature_vector_with_cropping_or_padding(p_c, premise_pad_crop_pair, 2, column_size=args.char_in_word_size)
+    h_char = fill_feature_vector_with_cropping_or_padding(h_c, hypothesis_pad_crop_pair, 2, column_size=args.char_in_word_size)
+
     p_pos = generate_pos_feature_tensor([dataset[i]['p_pos'][:] for i in indices], premise_pad_crop_pair)
     h_pos = generate_pos_feature_tensor([dataset[i]['h_pos'][:] for i in indices], hypothesis_pad_crop_pair)
 
@@ -209,7 +218,7 @@ def get_batches(dataset, start_index, end_index, crop_max = 100):
     h_exact = [dataset[i]['h_exact'][:] for i in indices]
     y = [dataset[i]['y'] for i in indices]
 
-    return p, h, p_pos, h_pos, p_exact, h_exact, y
+    return p, h, p_pos, h_pos, p_char, h_char, p_exact, h_exact, y
 
 
 

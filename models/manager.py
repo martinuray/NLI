@@ -112,7 +112,7 @@ class Manager:
                 self.E = tf.Variable(self.embedding, trainable=self.emb_train)
                 self.premise_in = emb_drop(self.E, self.premise_x)   #P
                 self.hypothesis_in = emb_drop(self.E, self.hypothesis_x)  #H
-        """
+        
         with tf.variable_scope("char_emb"):
             char_emb_mat = tf.get_variable("char_emb_mat", shape=[args.char_vocab_size, args.char_emb_size])
             with tf.variable_scope("char") as scope:
@@ -131,7 +131,7 @@ class Manager:
             self.premise_in = tf.concat([self.premise_in, conv_pre], axis=2)
             self.hypothesis_in = tf.concat([self.hypothesis_in, conv_hyp], axis=2)
 
-        """
+        
         self.premise_in = tf.concat((self.premise_in, tf.cast(self.premise_pos, tf.float32)), axis=2)
         self.hypothesis_in = tf.concat((self.hypothesis_in, tf.cast(self.hypothesis_pos, tf.float32)), axis=2)
 
@@ -733,14 +733,14 @@ class Manager:
 
         step_per_batch = int(len(data) / 200)
         for j in range(step_per_batch):
-            p, h, p_pos, h_pos, p_exact, h_exact, y = get_batches(data, j*self.batch_size, (j+1)*self.batch_size, self.sent_crop_len)
+            p, h, p_pos, h_pos,p_char, h_char, p_exact, h_exact, y = get_batches(data, j*self.batch_size, (j+1)*self.batch_size, self.sent_crop_len)
             acc, loss, summary = self.sess.run([self.acc, self.loss, self.merged], feed_dict={
                     self.premise_x: p,
                     self.hypothesis_x: h,
                     self.premise_pos: p_pos,
                     self.hypothesis_pos: h_pos,
-                    #self.premise_char: p_char,
-                    #self.hypothesis_char: h_char,
+                    self.premise_char: p_char,
+                    self.hypothesis_char: h_char,
                     self.premise_exact_match: p_exact,
                     self.hypothesis_exact_match: h_exact,
                     self.input_y: y,
@@ -779,15 +779,15 @@ class Manager:
             for j in range(step_per_batch):
                 batches = get_batches(data, j*self.batch_size, (j+1)*self.batch_size, self.sent_crop_len)
                 g_step += 1
-                p, h, p_pos, h_pos, p_exact, h_exact, y = batches
+                p, h, p_pos, h_pos, p_char, h_char, p_exact, h_exact, y = batches
                 run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
                 _, acc, loss, summary = self.sess.run([self.train_op, self.acc, self.loss, self.merged], feed_dict={
                     self.premise_x: p,
                     self.hypothesis_x: h,
                     self.premise_pos: p_pos,
                     self.hypothesis_pos: h_pos,
-                    #self.premise_char: p_char,
-                    #self.hypothesis_char: h_char,
+                    self.premise_char: p_char,
+                    self.hypothesis_char: h_char,
                     self.premise_exact_match: p_exact,
                     self.hypothesis_exact_match: h_exact,
                     self.input_y: y,

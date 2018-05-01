@@ -24,6 +24,7 @@ def build_voca():
     # word is valid if count > 10 or exists in GLOVE
     run_size = 100
     voca = Counter()
+    char_counter = Counter()
     glove_voca_list = glove_voca()
     max_length = 0
     mnli_train = load_nli_data(path_dict["training_mnli"])
@@ -32,6 +33,8 @@ def build_voca():
         s2_tokenize = tokenize(datum['sentence2_binary_parse'])
         for token in s1_tokenize + s2_tokenize:
             voca[token] += 1
+            for c in token:
+                char_counter[c] += 1
 
         if len(s1_tokenize) > max_length:
             max_length = len(s1_tokenize)
@@ -53,12 +56,19 @@ def build_voca():
             glove_found += 1
     print(len(word2idx))
     print("Glove found : {}".format(glove_found))
-    return word2idx
+
+    char_indices = dict(zip(char_counter, range(len(char_counter))))
+    return word2idx, char_indices
 
 
 def load_voca():
     return load_pickle("word2idx")
 
+def load_char_length():
+    return len(load_pickle("charidx"))
+
+def load_charidx():
+    return load_pickle("charidx")
 
 def load_shared_content(fh, shared_content):
     for line in fh:
@@ -106,6 +116,8 @@ def parsing_parse(parse):
 
 def transform_corpus(path, save_path, max_sequence = 400):
     voca = load_voca()
+    charidx = load_charidx()
+    args.char_vocab_size = load_char_length()
     mnli_train = load_nli_data(path)
     def convert(tokens):
         OOV = 0
@@ -143,12 +155,37 @@ def transform_corpus(path, save_path, max_sequence = 400):
             'p': s1,
             'p_pos': datum['sentence1_parse'],
             'p_exact': p_exact.T,
+            'p_char': get_char_index(datum['sentence1_binary_parse'], charidx),
             'h': s2,
             'h_pos': datum['sentence2_parse'],
             'h_exact': h_exact.T,
+            'h_char': get_char_index(datum['sentence2_binary_parse'], charidx),
             'y': y})
 
     save_pickle(save_path, data)
+    return data
+
+
+def get_char_index(tk, char_indices):
+    def tokenize(string):
+        string = re.sub(r'\(|\)', '', string)
+        return string.split()
+
+    token_sequence = tokenize(tk)
+    data = np.zeros((args.max_sequence, args.char_in_word_size), dtype=np.int32)
+
+    for i in range(args.max_sequence):
+        if i >= len(token_sequence):
+            continue
+        else:
+            chars = [c for c in token_sequence[i]]
+            for j in range(args.char_in_word_size):
+                if j >= (len(chars)):
+                    break
+                else:
+                    index = char_indices[chars[j]]
+                data[i,j] = index
+
     return data
 
 
@@ -164,6 +201,7 @@ def train_fair():
 
 def train_cafe():
     voca = load_voca()
+    args.char_vocab_size = load_char_length()
     model = Manager(max_sequence=100, word_indice=voca, batch_size=args.batch_size,
                     num_classes=3, vocab_size=1000,
                     embedding_size=300, lstm_dim=1024)
@@ -244,8 +282,9 @@ def run_adverserial():
 if __name__ == "__main__":
     actions = ["train_cafe"]
     if "build_voca" in actions:
-        word2idx = build_voca()
+        word2idx, charidx = build_voca()
         save_pickle("word2idx", word2idx)
+        save_pickle("charidx", charidx)
 
     # reformat corpus
     if "transform" in actions:
