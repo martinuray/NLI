@@ -69,76 +69,6 @@ class Manager:
         with tf.name_scope("embedding"):
                 self.embedding = tf.Variable(load_wemb(self.word_indice, self.embedding_size), trainable=False)
 
-        prem_seq_lengths, prem_mask = self.blocks_length(self.premise_x)  # mask [N, L , 1]
-        hyp_seq_lengths, hyp_mask = self.blocks_length(self.hypothesis_x)
-        self.prem_mask = prem_mask
-        self.hyp_mask = hyp_mask
-
-        def dropout(x, keep_prob, is_train, noise_shape=None, seed=None, name=None):
-            with tf.name_scope(name or "dropout"):
-                # if keep_prob < 1.0:
-                d = tf.nn.dropout(x, keep_prob, noise_shape=noise_shape, seed=seed)
-                out = tf.cond(is_train, lambda: d, lambda: x)
-                return out
-
-        def conv1d(in_, filter_size, height, padding, is_train=None, keep_prob=1.0, scope=None):
-            with tf.variable_scope(scope or "conv1d"):
-                num_channels = in_.get_shape()[-1]
-                filter_ = tf.get_variable("filter", shape=[1, height, num_channels, filter_size], dtype='float')
-                bias = tf.get_variable("bias", shape=[filter_size], dtype='float')
-                strides = [1, 1, 1, 1]
-                # if is_train is not None and keep_prob < 1.0:
-                in_ = dropout(in_, keep_prob, is_train)
-                xxc = tf.nn.conv2d(in_, filter_, strides, padding) + bias  # [N*M, JX, W/filter_stride, d]
-                out = tf.reduce_max(tf.nn.relu(xxc), 2)  # [-1, JX, d]
-                return out
-
-        def multi_conv1d(in_, filter_sizes, heights, padding, is_train=None, keep_prob=1.0, scope=None):
-            with tf.variable_scope(scope or "multi_conv1d"):
-                assert len(filter_sizes) == len(heights)
-                outs = []
-                for filter_size, height in zip(filter_sizes, heights):
-                    if filter_size == 0:
-                        continue
-                    out = conv1d(in_, filter_size, height, padding, is_train=is_train, keep_prob=keep_prob, scope="conv1d_{}".format(height))
-                    outs.append(out)
-                # concat_out = tf.concat(2, outs)
-                concat_out = tf.concat(outs, axis=2)
-                return concat_out
-
-        ### Embedding layer ###   # TODO: move to CAFE
-        with tf.variable_scope("emb"):
-            with tf.variable_scope("emb_var"), tf.device("/cpu:0"):
-                self.E = tf.Variable(self.embedding, trainable=self.emb_train)
-                self.premise_in = emb_drop(self.E, self.premise_x)   #P
-                self.hypothesis_in = emb_drop(self.E, self.hypothesis_x)  #H
-        
-        with tf.variable_scope("char_emb"):
-            char_emb_mat = tf.get_variable("char_emb_mat", shape=[args.char_vocab_size, args.char_emb_size])
-            with tf.variable_scope("char") as scope:
-                char_pre = tf.nn.embedding_lookup(char_emb_mat, self.premise_char)
-                char_hyp = tf.nn.embedding_lookup(char_emb_mat, self.hypothesis_char)
-
-                filter_sizes = list(map(int, args.out_channel_dims.split(','))) #[100]
-                heights = list(map(int, args.filter_heights.split(',')))        #[5]
-                assert sum(filter_sizes) == args.char_out_size, (filter_sizes, args.char_out_size)
-                with tf.variable_scope("conv") as scope:
-                    conv_pre = multi_conv1d(char_pre, filter_sizes, heights, "VALID", self.is_train, args.keep_rate, scope='conv')
-                    scope.reuse_variables()
-                    conv_hyp = multi_conv1d(char_hyp, filter_sizes, heights, "VALID", self.is_train, args.keep_rate, scope='conv')
-                    conv_pre = tf.reshape(conv_pre, [-1, max_sequence, args.char_out_size])
-                    conv_hyp = tf.reshape(conv_hyp, [-1, max_sequence, args.char_out_size])
-            self.premise_in = tf.concat([self.premise_in, conv_pre], axis=2)
-            self.hypothesis_in = tf.concat([self.hypothesis_in, conv_hyp], axis=2)
-
-        
-        self.premise_in = tf.concat((self.premise_in, tf.cast(self.premise_pos, tf.float32)), axis=2)
-        self.hypothesis_in = tf.concat((self.hypothesis_in, tf.cast(self.hypothesis_pos, tf.float32)), axis=2)
-
-        self.premise_in = tf.concat([self.premise_in, tf.cast(self.premise_exact_match, tf.float32)], axis=2)
-        self.hypothesis_in = tf.concat([self.hypothesis_in, tf.cast(self.hypothesis_exact_match, tf.float32)], axis=2)
-
-
         config = tf.ConfigProto(allow_soft_placement=True,
                                   log_device_placement=True )
         config.gpu_options.allow_growth = True
@@ -184,20 +114,24 @@ class Manager:
             with tf.name_scope("embedding"):
                 self.embedding = load_wemb(self.word_indice, self.embedding_size)
 
-            length_p, _ = self.blocks_length(self.premise_in)
-            length_h, _ = self.blocks_length(self.hypothesis_in)
-            logits = cafe_network (self.premise_in,
-                                   self.hypothesis_in,
-                                   length_p,
-                                   length_h,
+            length_p, _ = self.blocks_length(self.premise_x)
+            length_h, _ = self.blocks_length(self.hypothesis_x)
+            logits = cafe_network (self.premise_x,
+                                   self.hypothesis_x,
+                                   self.premise_pos,
+                                   self.hypothesis_pos,
+                                   self.premise_exact_match,
+                                   self.hypothesis_exact_match,
+                                   self.premise_char,
+                                   self.hypothesis_char,
                                    self.batch_size,
                                    self.num_classes,
                                    self.embedding,
                                    self.embedding_size,
                                    self.max_seq,
                                    self.l2_loss,
-                                   self.dropout_keep_prob
-                                   )
+                                   self.dropout_keep_prob,
+                                   self.is_train)
             self.logits = tf.identity(logits, name="absolute_output")
             print(self.input_y)
             pred_loss = tf.reduce_mean(
