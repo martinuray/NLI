@@ -1,5 +1,5 @@
 from tensorflow.python.client import device_lib
-
+import os
 from models.CAFE import *
 from util import *
 from collections import Counter
@@ -9,6 +9,7 @@ LOCAL_DEVICES = device_lib.list_local_devices()
 from tensorflow.python.client import timeline
 from deepexplain.tensorflow import DeepExplain
 from models import adverserial
+from models.common import get_batches, load_pickle, load_wemb
 
 
 def get_summary_path(name):
