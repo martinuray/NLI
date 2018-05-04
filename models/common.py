@@ -226,7 +226,8 @@ def get_batches(dataset, start_index, end_index, crop_max=100):
     h_exact = [dataset[i]['h_exact'][:] for i in indices]
     y = [dataset[i]['y'] for i in indices]
 
-    return p, h,p_len, h_len, p_pos, h_pos, p_char, h_char, p_exact, h_exact, y
+    return p, h, p_len, h_len, p_pos, h_pos, \
+        p_char, h_char, p_exact, h_exact, y
 
 
 def load_embedding(word_indices, word_embedding_dimension, divident=1.0):
