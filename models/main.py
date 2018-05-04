@@ -215,7 +215,7 @@ def lrp_run():
     # Dev acc=0.6576999819278717 loss=0.8433943867683411
     manager.load("hdrop2/model-41418")
     validate = models.common.load_pickle("dev_corpus")
-
+    # manager.view_lrp(validate, reverse_index(voca))
     # manager.lrp_3way(validate, reverse_index(voca))
     manager.lrp_entangle(validate, models.common.reverse_index(voca))
 
