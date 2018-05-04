@@ -666,7 +666,8 @@ class Manager:
 
         step_per_batch = int(len(data) / 200)
         for j in range(step_per_batch):
-            p, h, p_pos, h_pos,p_char, h_char, p_exact, h_exact, y = get_batches(data, j*self.batch_size, (j+1)*self.batch_size, self.sent_crop_len)
+            batches = get_batches(data, j*self.batch_size, (j+1)*self.batch_size, self.sent_crop_len)
+            p, h, input_p_len, input_h_len, p_pos, h_pos, p_char, h_char, p_exact, h_exact, y = batches
             acc, loss, summary = self.sess.run([self.acc, self.loss, self.merged], feed_dict={
                     self.premise_x: p,
                     self.hypothesis_x: h,
