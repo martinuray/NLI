@@ -9,6 +9,8 @@ def cafe_network(input_p, input_h, input_p_pos, input_h_pos,
     print("CAFE network..")
     if args.use_char_emb:
         emb_size += args.max_sequence
+    if args.syntactical_features:
+        emb_size += len(POS_Tagging) + 1
     highway_size = emb_size
 
 ### function definitions
@@ -113,6 +115,7 @@ def cafe_network(input_p, input_h, input_p_pos, input_h_pos,
                 hypothesis = emb_drop(embedding, input_h)  #H
 
         if args.use_char_emb:
+            print("Using Charecter Features")
          ### char features        
             with tf.variable_scope("char_emb"):
                 char_emb_mat = tf.get_variable("char_emb_mat", shape=[args.char_vocab_size, args.char_emb_size])
@@ -133,6 +136,7 @@ def cafe_network(input_p, input_h, input_p_pos, input_h_pos,
                 hypothesis = tf.concat([hypothesis, conv_hyp], axis=2)
 
         if args.syntactical_features:
+           print("Using syntactical features")
             ### syntactical feature - POS
            premise = tf.concat((premise, tf.cast(input_p_pos, tf.float32)), axis=2)
            hypothesis = tf.concat((hypothesis, tf.cast(input_h_pos, tf.float32)), axis=2)
