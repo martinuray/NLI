@@ -190,9 +190,6 @@ def get_batches(dataset, start_index, end_index, crop_max=100):
     h = fill_feature_vector_with_cropping_or_padding(
         [dataset[i]['h'][:] for i in indices], hypothesis_pad_crop_pair, 1)
 
-    def charecterize(tokens):
-        return [c for token in tokens for c in token]
-
     p_len = [dataset[i]['p_len'] for i in indices]
     h_len = [dataset[i]['h_len'] for i in indices]
 
