@@ -7,8 +7,9 @@ def cafe_network(input_p, input_h, input_p_pos, input_h_pos,
                  batch_size, num_classes, embedding, emb_size,
                  max_seq, l2_loss, dropout_keep_prob, is_train):
     print("CAFE network..")
+    if args.use_char_emb:
+        emb_size += args.max_sequence
     highway_size = emb_size
-    raw_data_len = 0
 
 ### function definitions
     def highway_layer_batch_double(x, seq_len, in_size, out_size, name):
@@ -110,7 +111,6 @@ def cafe_network(input_p, input_h, input_p_pos, input_h_pos,
             with tf.variable_scope("emb_var"), tf.device("/cpu:0"):
                 premise = emb_drop(embedding, input_p)   #P
                 hypothesis = emb_drop(embedding, input_h)  #H
-                raw_data_len += args.max_sequence
 
         if args.use_char_emb:
          ### char features        
@@ -131,7 +131,6 @@ def cafe_network(input_p, input_h, input_p_pos, input_h_pos,
                         conv_hyp = tf.reshape(conv_hyp, [-1, max_seq, args.char_out_size])
                 premise = tf.concat([premise, conv_pre], axis=2)
                 hypothesis = tf.concat([hypothesis, conv_hyp], axis=2)
-                raw_data_len += args.max_sequence
 
         if args.syntactical_features:
             ### syntactical feature - POS
@@ -143,22 +142,22 @@ def cafe_network(input_p, input_h, input_p_pos, input_h_pos,
            hypothesis = tf.concat([hypothesis, tf.cast(input_h_exact, tf.float32)], axis=2)
 
         with tf.device('/cpu:0'):
-            data_len = tf.cast(tf.reduce_max(raw_data_len), dtype=tf.int32)
+            data_len = tf.cast(tf.reduce_max(args.max_sequence), dtype=tf.int32)
 
 ### actual network
         # [batch, s_len, dim*2]
         p_enc1, p_intra_att = encode(premise[:, :data_len], data_len, "premise")
 
         # [batch, s_len, 3]
-        p_intra = align_fm(p_enc1, p_intra_att, raw_data_len, "premise_intra")
+        p_intra = align_fm(p_enc1, p_intra_att, args.max_sequence, "premise_intra")
 
         h_enc1, h_intra_att = encode(hypothesis[:, :data_len], data_len, "hypothesis")
         h_intra = align_fm(h_enc1, h_intra_att,
-                           raw_data_len, "hypothesis_intra")
+                           args.max_sequence, "hypothesis_intra")
 
         alpha, beta = inter_attention(p_enc1, h_enc1, "inter_attention")
-        p_inter = align_fm(p_enc1, alpha, raw_data_len, "premise_inter")
-        h_inter = align_fm(h_enc1, beta, raw_data_len, "hypothesis_inter")
+        p_inter = align_fm(p_enc1, alpha, args.max_sequence, "premise_inter")
+        h_inter = align_fm(h_enc1, beta, args.max_sequence, "hypothesis_inter")
 
         p_combine = tf.concat([p_enc1, p_intra, p_inter], axis=2)
         h_combine = tf.concat([h_enc1, h_intra, h_inter], axis=2)
@@ -166,9 +165,9 @@ def cafe_network(input_p, input_h, input_p_pos, input_h_pos,
         # h_intra has 3 elem, h_inter has 3 elem
         encode_width = highway_size + 6
 
-        p_encode = LSTM_pool(p_combine, max_seq, raw_data_len, encode_width,
+        p_encode = LSTM_pool(p_combine, max_seq, args.max_sequence, encode_width,
                              dropout_keep_prob, "p_lstm")  # [batch, dim*2+3]
-        h_encode = LSTM_pool(h_combine, max_seq, raw_data_len, encode_width,
+        h_encode = LSTM_pool(h_combine, max_seq, args.max_sequence, encode_width,
                              dropout_keep_prob, "h_lstm")  # [batch, dim*2+3]
 
         f_concat, f_sub, f_odot = interaction_feature(p_encode, h_encode,
