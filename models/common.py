@@ -40,6 +40,21 @@ def print_shape(name, tensor):
     print("{} : {}".format(name, tensor.shape))
 
 
+def convert_tokens(tokens, voca):
+    OOV = 0
+    converted = []
+    for t in tokens:
+        if t in voca:
+            converted.append(voca[t])
+        else:
+            converted.append(OOV)
+        if len(converted) == args.max_sequence:
+            break
+    while len(converted) < args.max_sequence:
+        converted.append(1)
+    return np.array(converted), len(tokens)
+
+
 def length(sequence):
     """
     Get true len of sequences(no padding), and mask for true-len in max-length.

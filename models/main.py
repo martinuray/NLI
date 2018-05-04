@@ -111,20 +111,6 @@ def transform_corpus(path, save_path):
     args.char_vocab_size = load_char_length()
     mnli_train = models.data_manager.load_nli_data(path)
 
-    def convert(tokens):
-        OOV = 0
-        converted = []
-        for t in tokens:
-            if t in voca:
-                converted.append(voca[t])
-            else:
-                converted.append(OOV)
-            if len(converted) == args.max_sequence:
-                break
-        while len(converted) < args.max_sequence:
-            converted.append(1)
-        return np.array(converted), len(tokens)
-
     data = []
     shared_content = load_mnli_shared_content()
     premise_pad_crop_pair = hypothesis_pad_crop_pair = [(0, 0)]
@@ -140,8 +126,8 @@ def transform_corpus(path, save_path):
             shared_content[pair_id]["sentence2_token_exact_match_with_s1"][:]],
                                                    hypothesis_pad_crop_pair, 1)
 
-        s1, s1_len = convert(s1_tokenize)
-        s2, s2_len = convert(s2_tokenize)
+        s1, s1_len = models.common.convert_tokens(s1_tokenize, voca)
+        s2, s2_len = models.common.convert_tokens(s2_tokenize, voca)
         label = datum["label"]
         y = label
         data.append({

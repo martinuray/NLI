@@ -430,58 +430,48 @@ class Manager:
                 true_label = D[y[i]]
                 pred_label = D[pred[i]]
 
-
-                print("--- {}({}) -- {} --- ".format(pred_label, true_label, run_logits[i]))
+                print("--- {}({}) -- {} --- ".format(pred_label,
+                                                     true_label, run_logits[i])
+                      )
                 for label in range(3):
                     r = E_all[label][0]
-                    r_concat = np.sum(r[i,0:dim*2])
+                    r_concat = np.sum(r[i, 0:dim*2])
                     r_sub = np.sum(r[i, dim*2:dim*3])
                     r_odot = np.sum(r[i, dim*3:dim*4])
                     print(D[label])
                     print("concat {0:.2f} ".format(r_concat))
-                    for j in range(0,200):
-                        print("{0:.2f}".format(r[i,j]*100), end=" ")
+                    for j in range(0, 200):
+                        print("{0:.2f}".format(r[i, j]*100), end=" ")
                     print()
                     print("sub {0:.2f} ".format(r_sub))
-                    for j in range(dim*2,dim*2+200):
-                        print("{0:.2f}".format(r[i,j]*100), end=" ")
+                    for j in range(dim*2, dim*2+200):
+                        print("{0:.2f}".format(r[i, j]*100), end=" ")
                     print()
                     print("odot {0:.2f} ".format(r_odot))
                     for j in range(dim * 3, dim * 3 + 200):
                         print("{0:.2f}".format(r[i, j] * 100), end=" ")
                     print()
 
-                    #for j in range(dim):
+                    # for j in range(dim):
                     #    print("{0:.2f}".format(r[i,j]), end=" ")
-                    #print("")
+                    # print("")
 
     def manaual_test(self, word2idx, idx2word):
-        h1 = "It 's an interesting account of the violent history of modern Israel , and ends in the  Room where nine Jews were executed . "
+        h1 = ("It 's an interesting account of the violent history of modern "
+              "Israel , and ends in the  "
+              "Room where nine Jews were executed . ")
 
     def run_adverserial(self, word2idx):
         test_cases, tag = adverserial.antonym()
         OOV = 0
         PADDING = 1
         max_sequence = 400
-        def convert(tokens):
-            OOV = 0
-            l = []
-            for t in tokens:
-                if t in word2idx:
-                    l.append(word2idx[t])
-                else:
-                    l.append(OOV)
-                if len(l) == max_sequence:
-                    break
-            while len(l) < max_sequence:
-                l.append(1)
-            return np.array(l), len(tokens)
 
         data = []
         for test_case in test_cases:
             p, h, y = test_case
-            p, p_len = convert(p)
-            h, h_len = convert(h)
+            p, p_len = convert_tokens(p, word2idx)
+            h, h_len = convert_tokens(h, word2idx)
             data.append({
                 'p': p,
                 'p_len': p_len,
