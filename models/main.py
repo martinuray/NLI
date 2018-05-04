@@ -105,7 +105,7 @@ def load_mnli_shared_content():
     return shared_content
 
 
-def transform_corpus(path, save_path, max_sequence=400):
+def transform_corpus(path, save_path):
     voca = load_voca()
     charidx = load_charidx()
     args.char_vocab_size = load_char_length()
@@ -119,9 +119,9 @@ def transform_corpus(path, save_path, max_sequence=400):
                 converted.append(voca[t])
             else:
                 converted.append(OOV)
-            if len(converted) == max_sequence:
+            if len(converted) == args.max_sequence:
                 break
-        while len(converted) < max_sequence:
+        while len(converted) < args.max_sequence:
             converted.append(1)
         return np.array(converted), len(tokens)
 
@@ -149,10 +149,12 @@ def transform_corpus(path, save_path, max_sequence=400):
             'p_pos': datum['sentence1_parse'],
             'p_exact': p_exact.T,
             'p_char': get_char_index(datum['sentence1_binary_parse'], charidx),
+            'p_len': s1_len,
             'h': s2,
             'h_pos': datum['sentence2_parse'],
             'h_exact': h_exact.T,
             'h_char': get_char_index(datum['sentence2_binary_parse'], charidx),
+            'h_len': s2_len,
             'y': y})
 
     models.common.save_pickle(save_path, data)

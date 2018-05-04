@@ -28,6 +28,7 @@ class Manager:
         print("LSTM dimension: {}".format(lstm_dim))
         self.premise_x = tf.placeholder(tf.int32, [None, max_sequence], name='premise')
         self.hypothesis_x = tf.placeholder(tf.int32, [None, max_sequence], name='hypothesis')
+        self.input_h = tf.placeholder(tf.int32, [None, max_sequence], name="input_h_absolute_input")
         self.premise_pos = tf.placeholder(tf.int32, [None, max_sequence, 47], name='premise_pos')
         self.hypothesis_pos = tf.placeholder(tf.int32, [None, max_sequence, 47], name='hypothesis_pos')
         self.premise_char = tf.placeholder(tf.int32, [None, max_sequence, args.char_in_word_size], name='premise_char')
@@ -114,8 +115,6 @@ class Manager:
             with tf.name_scope("embedding"):
                 self.embedding = load_wemb(self.word_indice, self.embedding_size)
 
-            length_p, _ = self.blocks_length(self.premise_x)
-            length_h, _ = self.blocks_length(self.hypothesis_x)
             logits = cafe_network (self.premise_x,
                                    self.hypothesis_x,
                                    self.premise_pos,
@@ -678,9 +677,10 @@ class Manager:
                     self.premise_exact_match: p_exact,
                     self.hypothesis_exact_match: h_exact,
                     self.input_y: y,
-                    self.dropout_keep_prob: 1.0,
-                    self.is_train: False, 
-            }, run_metadata=self.run_metadata)
+                    self.dropout_keep_prob: 0.8,
+                    self.is_train: True,
+                }, run_metadata=self.run_metadata)
+            
             acc_sum.append(acc)
             loss_sum.append(loss)
             self.test_writer.add_summary(summary, g_step+step)
@@ -713,7 +713,7 @@ class Manager:
             for j in range(step_per_batch):
                 batches = get_batches(data, j*self.batch_size, (j+1)*self.batch_size, self.sent_crop_len)
                 g_step += 1
-                p, h, p_pos, h_pos, p_char, h_char, p_exact, h_exact, y = batches
+                p, h, input_p_len, input_h_len, p_pos, h_pos, p_char, h_char, p_exact, h_exact, y = batches
                 run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
                 _, acc, loss, summary = self.sess.run([self.train_op, self.acc, self.loss, self.merged], feed_dict={
                     self.premise_x: p,

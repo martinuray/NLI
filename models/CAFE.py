@@ -8,7 +8,9 @@ def cafe_network(input_p, input_h, input_p_pos, input_h_pos,
                  max_seq, l2_loss, dropout_keep_prob, is_train):
     print("CAFE network..")
     highway_size = emb_size
+    raw_data_len = 0
 
+### function definitions
     def highway_layer_batch_double(x, seq_len, in_size, out_size, name):
         activation = tf.nn.relu
         x_flat = tf.reshape(x, [-1, in_size])
@@ -21,7 +23,6 @@ def cafe_network(input_p, input_h, input_p_pos, input_h_pos,
     def encode(sent, s_len, name):
         # [batch, max_seq, dim]
         #embedded_raw = tf.nn.embedding_lookup(embedding, sent, name=name)
-        print_shape("sent", sent)
         embedded = tf.reshape(sent, [-1, emb_size])
         h = highway_layer(embedded, emb_size, tf.nn.relu,
                           "{}/high1".format(name))
@@ -104,57 +105,60 @@ def cafe_network(input_p, input_h, input_p_pos, input_h_pos,
 
     with tf.device('/gpu:0'):
 ### preprocessing
-         ### Embedding layer ###   # TODO: move to CAFE
-        
+         ### Embedding layer ###   
         with tf.variable_scope("emb"):
             with tf.variable_scope("emb_var"), tf.device("/cpu:0"):
                 premise = emb_drop(embedding, input_p)   #P
                 hypothesis = emb_drop(embedding, input_h)  #H
-                
-        with tf.variable_scope("char_emb"):
-            char_emb_mat = tf.get_variable("char_emb_mat", shape=[args.char_vocab_size, args.char_emb_size])
-            with tf.variable_scope("char") as scope:
-                char_pre = tf.nn.embedding_lookup(char_emb_mat, input_p_char)
-                char_hyp = tf.nn.embedding_lookup(char_emb_mat, input_h_char)
+                raw_data_len += args.max_sequence
 
-                filter_sizes = list(map(int, args.out_channel_dims.split(','))) #[100]
-                heights = list(map(int, args.filter_heights.split(',')))        #[5]
-                assert sum(filter_sizes) == args.char_out_size, (filter_sizes, args.char_out_size)
-                with tf.variable_scope("conv") as scope:
-                    conv_pre = multi_conv1d(char_pre, filter_sizes, heights, "VALID", is_train, args.keep_rate, scope='conv')
-                    scope.reuse_variables()
-                    conv_hyp = multi_conv1d(char_hyp, filter_sizes, heights, "VALID", is_train, args.keep_rate, scope='conv')
-                    conv_pre = tf.reshape(conv_pre, [-1, args.max_sequence, args.char_out_size])
-                    conv_hyp = tf.reshape(conv_hyp, [-1, args.max_sequence, args.char_out_size])
-            premise = tf.concat([premise, conv_pre], axis=2)
-            hypothesis = tf.concat([hypothesis, conv_hyp], axis=2)
-        
-        premise = tf.concat((premise, tf.cast(input_p_pos, tf.float32)), axis=2)
-        hypothesis = tf.concat((hypothesis, tf.cast(input_h_pos, tf.float32)), axis=2)
+        if args.use_char_emb:
+         ### char features        
+            with tf.variable_scope("char_emb"):
+                char_emb_mat = tf.get_variable("char_emb_mat", shape=[args.char_vocab_size, args.char_emb_size])
+                with tf.variable_scope("char") as scope:
+                    char_pre = tf.nn.embedding_lookup(char_emb_mat, input_p_char)
+                    char_hyp = tf.nn.embedding_lookup(char_emb_mat, input_h_char)
 
-        #self.premise_in = tf.concat([self.premise_in, tf.cast(self.premise_exact_match, tf.float32)], axis=2)
-        #self.hypothesis_in = tf.concat([self.hypothesis_in, tf.cast(self.hypothesis_exact_match, tf.float32)], axis=2)
+                    filter_sizes = list(map(int, args.out_channel_dims.split(','))) #[100]
+                    heights = list(map(int, args.filter_heights.split(',')))        #[5]
+                    assert sum(filter_sizes) == args.char_out_size, (filter_sizes, args.char_out_size)
+                    with tf.variable_scope("conv") as scope:
+                        conv_pre = multi_conv1d(char_pre, filter_sizes, heights, "VALID", is_train, args.keep_rate, scope='conv')
+                        scope.reuse_variables()
+                        conv_hyp = multi_conv1d(char_hyp, filter_sizes, heights, "VALID", is_train, args.keep_rate, scope='conv')
+                        conv_pre = tf.reshape(conv_pre, [-1, max_seq, args.char_out_size])
+                        conv_hyp = tf.reshape(conv_hyp, [-1, max_seq, args.char_out_size])
+                premise = tf.concat([premise, conv_pre], axis=2)
+                hypothesis = tf.concat([hypothesis, conv_hyp], axis=2)
+                raw_data_len += args.max_sequence
+
+        if args.syntactical_features:
+            ### syntactical feature - POS
+           premise = tf.concat((premise, tf.cast(input_p_pos, tf.float32)), axis=2)
+           hypothesis = tf.concat((hypothesis, tf.cast(input_h_pos, tf.float32)), axis=2)
+
+            ### syntactical feature - binary exact match
+           premise = tf.concat([premise, tf.cast(input_p_exact, tf.float32)], axis=2)
+           hypothesis = tf.concat([hypothesis, tf.cast(input_h_exact, tf.float32)], axis=2)
 
         with tf.device('/cpu:0'):
-            input_p_len = blocks_length(premise)
-            p_len = tf.cast(tf.reduce_max(input_p_len), dtype=tf.int32)
-            input_h_len = blocks_length(hypothesis)
-            h_len = tf.cast(tf.reduce_max(input_h_len), dtype=tf.int32)
+            data_len = tf.cast(tf.reduce_max(raw_data_len), dtype=tf.int32)
 
 ### actual network
         # [batch, s_len, dim*2]
-        p_enc1, p_intra_att = encode(premise[:, :p_len], p_len, "premise")
+        p_enc1, p_intra_att = encode(premise[:, :data_len], data_len, "premise")
 
         # [batch, s_len, 3]
-        p_intra = align_fm(p_enc1, p_intra_att, input_p_len, "premise_intra")
+        p_intra = align_fm(p_enc1, p_intra_att, raw_data_len, "premise_intra")
 
-        h_enc1, h_intra_att = encode(hypothesis[:, :h_len], h_len, "hypothesis")
+        h_enc1, h_intra_att = encode(hypothesis[:, :data_len], data_len, "hypothesis")
         h_intra = align_fm(h_enc1, h_intra_att,
-                           input_h_len, "hypothesis_intra")
+                           raw_data_len, "hypothesis_intra")
 
         alpha, beta = inter_attention(p_enc1, h_enc1, "inter_attention")
-        p_inter = align_fm(p_enc1, alpha, input_p_len, "premise_inter")
-        h_inter = align_fm(h_enc1, beta, input_h_len, "hypothesis_inter")
+        p_inter = align_fm(p_enc1, alpha, raw_data_len, "premise_inter")
+        h_inter = align_fm(h_enc1, beta, raw_data_len, "hypothesis_inter")
 
         p_combine = tf.concat([p_enc1, p_intra, p_inter], axis=2)
         h_combine = tf.concat([h_enc1, h_intra, h_inter], axis=2)
@@ -162,9 +166,9 @@ def cafe_network(input_p, input_h, input_p_pos, input_h_pos,
         # h_intra has 3 elem, h_inter has 3 elem
         encode_width = highway_size + 6
 
-        p_encode = LSTM_pool(p_combine, max_seq, input_p_len, encode_width,
+        p_encode = LSTM_pool(p_combine, max_seq, raw_data_len, encode_width,
                              dropout_keep_prob, "p_lstm")  # [batch, dim*2+3]
-        h_encode = LSTM_pool(h_combine, max_seq, input_h_len, encode_width,
+        h_encode = LSTM_pool(h_combine, max_seq, raw_data_len, encode_width,
                              dropout_keep_prob, "h_lstm")  # [batch, dim*2+3]
 
         f_concat, f_sub, f_odot = interaction_feature(p_encode, h_encode,

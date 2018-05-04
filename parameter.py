@@ -14,6 +14,7 @@ pa("--char_emb_size", type=int, default=8, help="char emb size")
 pa("--char_in_word_size", type=int, default=16, help="number of chars in word")
 pa("--char_out_size", type=int, default=100, help="char out size")
 pa("--use_char_emb", action='store_true', help="use character level info")
+pa("--syntactical_features", action='store_true', help="if to use synt. features")
 pa("--keep_rate", type=float, default=1.0,
    help="Keep rate for dropout in the model")
 pa("--use_gpu", type=int, default=2,
