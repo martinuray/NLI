@@ -820,9 +820,7 @@ class Manager:
                         }, run_metadata=self.run_metadata, options=run_options)
 
                 if g_step % log_every == 1 or g_step < 5:
-                    print("step{} : {} acc : {} ".format(g_step, loss, acc))
-                if g_step % check_dev_every == 0:
-                    self.check_dev(valid_data, g_step)
+                    logging.info("step{} : {} acc : {} ".format(g_step, loss, acc))
                 s_loss += loss
                 l_acc.append(acc)
                 self.train_writer.add_summary(summary, g_step)
@@ -830,6 +828,7 @@ class Manager:
                                                    "meta_{}".format(g_step))
                 time_estimator.tick()
 
+            self.check_dev(valid_data, g_step)
             current_step = tf.train.global_step(self.sess, self.global_step)
             path = self.saver.save(self.sess, self.save_path(),
                                    global_step=current_step)
