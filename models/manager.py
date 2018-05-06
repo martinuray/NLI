@@ -1,4 +1,5 @@
 from tensorflow.python.client import device_lib
+import logging
 import os
 from models.CAFE import *
 from util import *
@@ -10,26 +11,15 @@ from tensorflow.python.client import timeline
 from deepexplain.tensorflow import DeepExplain
 from models import adverserial
 from models.common import get_batches, load_pickle, load_wemb
-
-
-def get_summary_path(name):
-    i = 0
-
-    def gen_path():
-        return os.path.join('summary', '{}{}'.format(name, i))
-
-    while os.path.exists(gen_path()):
-        i += 1
-
-    return gen_path()
+from parameter import args, path_dict
 
 
 class Manager:
     def __init__(self, max_sequence, word_indice, batch_size, num_classes,
                  vocab_size, embedding_size, lstm_dim):
-        print("Building Model")
-        print("Batch size : {}".format(batch_size))
-        print("LSTM dimension: {}".format(lstm_dim))
+        logging.debug("Building Model")
+        logging.debug("Batch size : {}".format(batch_size))
+        logging.debug("LSTM dimension: {}".format(lstm_dim))
         self.premise_x = tf.placeholder(
             tf.int32, [None, max_sequence], name='premise')
         self.hypothesis_x = tf.placeholder(
@@ -99,13 +89,13 @@ class Manager:
 
     def log_info(self):
         self.run_metadata = tf.RunMetadata()
-        path = get_summary_path("train")
+        path = args.summary_path
         train_log_path = os.path.join(path, "train")
         test_log_path = os.path.join(path, "test")
         self.train_writer = tf.summary.FileWriter(train_log_path,
                                                   self.sess.graph)
         self.train_writer.add_run_metadata(self.run_metadata, "train")
-        print("Summary at {}".format(path))
+        logging.debug("Summary at {}".format(path))
         self.test_writer = tf.summary.FileWriter(test_log_path,
                                                  filename_suffix=".test")
 
@@ -136,7 +126,6 @@ class Manager:
                                   self.dropout_keep_prob, self.is_train)
 
             self.logits = tf.identity(logits, name="absolute_output")
-            print(self.input_y)
             pred_loss = tf.reduce_mean(
                 tf.nn.sparse_softmax_cross_entropy_with_logits(
                     labels=self.input_y, logits=self.logits))
@@ -781,10 +770,10 @@ class Manager:
             self.test_writer.add_summary(summary, g_step+step)
             step += 1
 
-        print("Dev acc={} loss={} ".format(avg(acc_sum), avg(loss_sum)))
+        logging.debug("Dev acc={} loss={} ".format(avg(acc_sum), avg(loss_sum)))
 
     def train(self, epochs, data, valid_data, rerun=False):
-        print("Train")
+        logging.debug("Train")
         self.log_info()
         if not rerun:
             self.sess.run(tf.global_variables_initializer())
@@ -796,7 +785,7 @@ class Manager:
         g_step = 0
 
         for i in range(epochs):
-            print("Epoch {}".format(i))
+            logging.debug("Epoch {}".format(i))
             s_loss = 0
             l_acc = []
             time_estimator = TimeEstimator(self.batch_size, name="epoch")
@@ -844,6 +833,6 @@ class Manager:
             current_step = tf.train.global_step(self.sess, self.global_step)
             path = self.saver.save(self.sess, self.save_path(),
                                    global_step=current_step)
-            print("Checkpoint saved at {}".format(path))
-            print("Training Average loss : {} , acc : {}".format(s_loss,
+            logging.info("Checkpoint saved at {}".format(path))
+            logging.debug("Training Average loss : {} , acc : {}".format(s_loss,
                                                                  avg(l_acc)))

@@ -1,5 +1,6 @@
 from collections import Counter
 import json
+import logging
 import numpy as np
 import os
 import re
@@ -15,6 +16,23 @@ import models.common
 from parameter import args, path_dict
 
 tf.logging.set_verbosity(tf.logging.INFO)
+
+os.makedirs(path_dict["logging_path"])
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+                    datefmt='%m-%d %H:%M',
+                    filename=os.path.join(path_dict["logging_path"], "cafe.log"),
+                    filemode='w')
+
+
+# set up logging to console
+console = logging.StreamHandler()
+console.setLevel(logging.DEBUG)
+# set a format which is simpler for console use
+formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
+console.setFormatter(formatter)
+# add the handler to the root logger
+logging.getLogger('').addHandler(console)
 
 
 def tokenize(string):
@@ -41,8 +59,8 @@ def build_voca():
             max_length = len(s1_tokenize)
         if len(s2_tokenize) > max_length:
             max_length = len(s2_tokenize)
-    print(len(voca))
-    print("Max length : {}".format(max_length))
+    logging.debug("length of vocabulary: %d", len(voca))
+    logging.debug("length of the longest sentence: {}".format(max_length))
 
     word2idx = dict()
     word2idx["<OOV>"] = 0
@@ -55,8 +73,8 @@ def build_voca():
             idx += 1
         if word in glove_voca_list:
             glove_found += 1
-    print(len(word2idx))
-    print("Glove found : {}".format(glove_found))
+    logging.debug(len(word2idx))
+    logging.debug("Glove found : {}".format(glove_found))
 
     char_indices = dict(zip(char_counter, range(len(char_counter))))
     return word2idx, char_indices
@@ -89,7 +107,7 @@ def load_mnli_shared_content():
     # shared_path = config.datapath + "/shared_NER.json"
     shared_path = path_dict["shared_mnli"]
     # shared_path = "../shared.json"
-    print(shared_path)
+    logging.debug(shared_path)
     if os.path.isfile(shared_path):
         shared_file_exist = True
     # shared_content = {}

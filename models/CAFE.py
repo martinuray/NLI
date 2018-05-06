@@ -1,4 +1,5 @@
 import tensorflow as tf
+import logging
 from models.common import dense, factorization_machine, highway_layer, \
     inter_attention, interaction_feature, intra_attention, LSTM_pool, \
     POS_Tagging
@@ -10,7 +11,7 @@ def cafe_network(input_p, input_h, input_p_pos, input_h_pos,
                  batch_size, num_classes, embedding, emb_size,
                  max_seq, l2_loss, dropout_keep_prob, is_train):
     """Cafe Network initializer."""
-    print("CAFE network..")
+    logging.debug("CAFE network..")
     if args.use_char_emb:
         emb_size += args.max_sequence
     if args.syntactical_features:
@@ -112,7 +113,7 @@ def cafe_network(input_p, input_h, input_p_pos, input_h_pos,
                 hypothesis = emb_drop(embedding, input_h)  # H
 
         if args.use_char_emb:
-            print("Using Charecter Features")
+            logging.debug("Using Charecter Features")
             # char features
             with tf.variable_scope("char_emb"):
                 char_emb_mat = tf.get_variable(
@@ -149,7 +150,7 @@ def cafe_network(input_p, input_h, input_p_pos, input_h_pos,
                 hypothesis = tf.concat([hypothesis, conv_hyp], axis=2)
 
         if args.syntactical_features:
-            print("Using syntactical features")
+            logging.debug("Using syntactical features")
             # syntactical feature - POS
             premise = tf.concat((premise,
                                  tf.cast(input_p_pos, tf.float32)), axis=2)
