@@ -19,7 +19,6 @@ pa("--keep_rate", type=float, default=1.0,
    help="Keep rate for dropout in the model")
 pa("--use_gpu", type=int, default=2,
    help="The index of the gpu to use for tensorflow")
-pa("--summary_path", type=str, default="summary")
 
 
 def get_summary_path(name):
@@ -35,6 +34,7 @@ def get_summary_path(name):
 
 
 args = parser.parse_args()
+args.summary_path = get_summary_path("train") 
 
 path_dict = {
     "training_mnli": os.path.join(
@@ -57,5 +57,5 @@ path_dict = {
     "test_snli": os.path.join(
         args.datapath, "snli_1.0", "snli_1.0_test.jsonl"),
     "embedding_data_path": os.path.join(args.datapath, "glove.840B.300d.txt"),
-    "logging_path": os.path.join(get_summary_path("train"), "log"),
+    "logging_path": os.path.join(args.summary_path, "log"),
 }
