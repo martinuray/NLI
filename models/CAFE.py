@@ -32,7 +32,9 @@ def cafe_network(input_p, input_h, input_p_pos, input_h_pos,
         embedded = tf.reshape(sent, [-1, emb_size])
         h = highway_layer(embedded, emb_size, tf.nn.relu,
                           "{}/high1".format(name))
-        h2 = highway_layer(h, emb_size, tf.nn.relu, "{}/high2".format(name))
+        h_out = tf.nn.dropout(h, dropout_keep_prob)
+        h2 = highway_layer(h_out, emb_size, 
+                           tf.nn.relu, "{}/high2".format(name))
         h2_drop = tf.nn.dropout(h2, dropout_keep_prob)
         h_out = tf.reshape(h2_drop, [-1, s_len, emb_size])
         att = intra_attention(h_out, name)
@@ -204,7 +206,8 @@ def cafe_network(input_p, input_h, input_p_pos, input_h_pos,
         feature = tf.concat([f_concat, f_sub, f_odot], axis=1, name="feature")
         h_width = 4*(encode_width*2)
         h = highway_layer(feature, h_width, tf.nn.relu, "pred/high1")
-        h2 = highway_layer(h, h_width, tf.nn.relu, "pred/high2")
+        h_drop = tf.nn.dropout(h, dropout_keep_prob)
+        h2 = highway_layer(h_drop, h_width, tf.nn.relu, "pred/high2")
         h2_drop = tf.nn.dropout(h2, dropout_keep_prob)
         y_pred = dense(h2_drop, h_width, num_classes, l2_loss, "pred/dense")
     return y_pred
