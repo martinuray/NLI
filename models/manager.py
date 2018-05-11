@@ -761,7 +761,7 @@ class Manager:
                     self.premise_exact_match: p_exact,
                     self.hypothesis_exact_match: h_exact,
                     self.input_y: y,
-                    self.dropout_keep_prob: 0.8,
+                    self.dropout_keep_prob: 1.0,
                     self.is_train: True,
                 }, run_metadata=self.run_metadata)
 
