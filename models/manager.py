@@ -789,7 +789,7 @@ class Manager:
             s_loss = 0
             l_acc = []
             time_estimator = TimeEstimator(self.batch_size, name="epoch")
-            # shuffle(batches)
+            shuffle(batches)
 
             for j in range(step_per_batch):
                 batches = get_batches(data, j*self.batch_size,
