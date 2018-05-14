@@ -17,8 +17,12 @@ pa("--use_char_emb", action='store_true', help="use character level info")
 pa("--syntactical_features", action='store_true', help="if to use synt. features")
 pa("--keep_rate", type=float, default=1.0,
    help="Keep rate for dropout in the model")
+pa("--k_fact", type=float, default=99,
+   help="latent factor k for the factorization layer")
+
 pa("--use_gpu", type=int, default=2,
    help="The index of the gpu to use for tensorflow")
+
 
 
 def get_summary_path(name):

@@ -399,7 +399,7 @@ def cartesian(v1, v2):
 
 def factorization_machine(input, n_item, input_size, l2_loss, name):
     # input : [ -1, input_size]
-    hidden_dim = 99
+    hidden_dim = args.k_fact 
     with tf.variable_scope(name):
         # [batch*seq]
         L = tf.reshape(dense(input, input_size, 1, l2_loss, "w"), [-1])
