@@ -10,7 +10,7 @@ LOCAL_DEVICES = device_lib.list_local_devices()
 from tensorflow.python.client import timeline
 from deepexplain.tensorflow import DeepExplain
 from models import adverserial
-from models.common import get_batches, load_pickle, load_wemb
+from models.common import avg, get_batches, load_pickle, load_wemb
 from parameter import args, path_dict
 
 
