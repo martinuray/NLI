@@ -195,9 +195,11 @@ def parsing_parse(parse):
     return pos
 
 
-def get_batches(dataset, start_index, end_index, crop_max=100):
+def get_batches(dataset, start_index, end_index, crop_max=100, shuffle=False):
     # data is fully numpy array here
     indices = range(start_index, end_index)
+    if shuffle:
+        indices = np.random.permutation(indices)
 
     premise_pad_crop_pair = hypothesis_pad_crop_pair = [(0, 0)] * len(indices)
     p = fill_feature_vector_with_cropping_or_padding(
